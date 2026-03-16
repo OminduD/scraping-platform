@@ -21,7 +21,7 @@ class JobService:
         return query.order_by(JobListing.created_at.desc()).offset(skip).limit(limit).all()
 
     def get_job(self, job_id: int) -> JobListing:
-        job = self.db.query(JobListing).get(job_id)
+        job = self.db.get(JobListing, job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="Job listing not found")
         return job
