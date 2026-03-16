@@ -3,6 +3,9 @@
 Each worker is a long-running process designed to be horizontally scaled
 via Docker Compose replicas or Kubernetes pods.
 
+Crawl jobs are executed in subprocesses to avoid the Twisted reactor
+"not restartable" limitation.
+
 Usage:
     python -m infrastructure.workers.worker
 """
@@ -11,14 +14,12 @@ from __future__ import annotations
 
 import json
 import signal
+import subprocess
 import sys
-import time
 from typing import Any
 
 import redis
 import structlog
-from scrapy.crawler import CrawlerProcess
-from scrapy.utils.project import get_project_settings
 
 from configs import get_settings
 from infrastructure.scheduler.scheduler import QUEUE_KEY
@@ -40,34 +41,30 @@ def _handle_signal(signum: int, frame) -> None:  # noqa: ANN001
     _shutdown_requested = True
 
 
-def _import_spider(dotted_path: str):
-    """Dynamically import a spider class from its dotted path."""
-    module_path, class_name = dotted_path.rsplit(".", 1)
-    import importlib
-    module = importlib.import_module(module_path)
-    return getattr(module, class_name)
-
-
 def process_job(job: dict[str, Any]) -> bool:
-    """Run a single crawl job synchronously using CrawlerProcess."""
+    """Run a single crawl job in a subprocess to avoid reactor restart issues."""
     spider_name = job.get("spider")
     if spider_name not in SPIDER_REGISTRY:
         logger.error("worker.unknown_spider", spider=spider_name)
         return False
 
-    spider_cls = _import_spider(SPIDER_REGISTRY[spider_name])
-
-    # Build Scrapy settings; override start_urls if the job provides one
-    settings = get_project_settings()
-    settings.setmodule("crawlers.settings")
-    process = CrawlerProcess(settings)
-
-    kwargs: dict[str, Any] = {}
+    # Run the spider via scripts.run_spider in a child process
+    cmd = [sys.executable, "-m", "scripts.run_spider", spider_name]
     if "url" in job:
-        kwargs["start_urls"] = [job["url"]]
+        cmd.extend(["--url", job["url"]])
 
-    process.crawl(spider_cls, **kwargs)
-    process.start(stop_after_crawl=True)
+    logger.info("worker.starting_crawl", spider=spider_name, cmd=cmd)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        logger.error(
+            "worker.crawl_failed",
+            spider=spider_name,
+            returncode=result.returncode,
+            stderr=result.stderr[-500:] if result.stderr else "",
+        )
+        return False
+
     logger.info("worker.job_done", spider=spider_name)
     return True
 

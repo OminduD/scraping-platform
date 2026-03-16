@@ -21,7 +21,7 @@ class ProductService:
         return query.order_by(Product.created_at.desc()).offset(skip).limit(limit).all()
 
     def get_product(self, product_id: int) -> Product:
-        product = self.db.query(Product).get(product_id)
+        product = self.db.get(Product, product_id)
         if product is None:
             raise HTTPException(status_code=404, detail="Product not found")
         return product

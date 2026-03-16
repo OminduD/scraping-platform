@@ -3,11 +3,13 @@
 Usage:
     python -m scripts.run_spider products
     python -m scripts.run_spider jobs
+    python -m scripts.run_spider products --url https://example.com
 """
 
 from __future__ import annotations
 
-import sys
+import argparse
+import importlib
 
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
@@ -19,22 +21,25 @@ SPIDERS = {
 
 
 def main() -> None:
-    if len(sys.argv) < 2 or sys.argv[1] not in SPIDERS:
-        print(f"Usage: python -m scripts.run_spider <{'|'.join(SPIDERS)}>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Run a spider by name")
+    parser.add_argument("spider", choices=SPIDERS.keys(), help="Spider to run")
+    parser.add_argument("--url", help="Override start URL")
+    args = parser.parse_args()
 
-    spider_name = sys.argv[1]
-    dotted_path = SPIDERS[spider_name]
+    dotted_path = SPIDERS[args.spider]
     module_path, class_name = dotted_path.rsplit(".", 1)
-
-    import importlib
     module = importlib.import_module(module_path)
     spider_cls = getattr(module, class_name)
 
     settings = get_project_settings()
     settings.setmodule("crawlers.settings")
     process = CrawlerProcess(settings)
-    process.crawl(spider_cls)
+
+    kwargs = {}
+    if args.url:
+        kwargs["start_urls"] = [args.url]
+
+    process.crawl(spider_cls, **kwargs)
     process.start()
 
 

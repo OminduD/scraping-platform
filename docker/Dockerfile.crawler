@@ -19,4 +19,5 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 
 COPY . .
 
-CMD ["scrapy", "crawl", "products", "-s", "SETTINGS_MODULE=crawlers.settings"]
+ENV SCRAPY_SETTINGS_MODULE=crawlers.settings
+CMD ["scrapy", "crawl", "products"]

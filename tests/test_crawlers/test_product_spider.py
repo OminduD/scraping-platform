@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 from scrapy.http import HtmlResponse, Request
 
 from crawlers.ecommerce.product_spider import ProductSpider

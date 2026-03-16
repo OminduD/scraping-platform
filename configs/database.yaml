@@ -1,8 +1,6 @@
-# Database connection — values are overridden by env vars in production
+# Database connection — values are overridden by POSTGRES_* env vars in production
 host: localhost
 port: 5432
-database: scraping_platform
+db: scraping_platform
 user: scraper
 password: changeme
-pool_size: 10
-max_overflow: 20
