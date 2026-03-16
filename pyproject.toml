@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "scraping-platform"
@@ -50,6 +50,17 @@ dev = [
     "ruff>=0.1,<1",
     "mypy>=1.7,<2",
     "factory-boy>=3.3,<4",
+]
+
+[tool.setuptools.packages.find]
+include = [
+    "crawlers*",
+    "pipelines*",
+    "api*",
+    "data_models*",
+    "infrastructure*",
+    "configs*",
+    "scripts*",
 ]
 
 [tool.ruff]
