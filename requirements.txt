@@ -1,0 +1,40 @@
+# Core
+scrapy>=2.11,<3
+playwright>=1.40,<2
+fastapi>=0.104,<1
+uvicorn[standard]>=0.24,<1
+
+# Database
+sqlalchemy>=2.0,<3
+alembic>=1.13,<2
+psycopg2-binary>=2.9,<3
+
+# Queue
+redis>=5.0,<6
+
+# Data processing
+pandas>=2.1,<3
+beautifulsoup4>=4.12,<5
+lxml>=4.9,<6
+
+# Validation / Settings
+pydantic>=2.5,<3
+pydantic-settings>=2.1,<3
+pyyaml>=6.0,<7
+
+# Monitoring
+prometheus-client>=0.19,<1
+
+# Logging
+structlog>=23.2,<25
+
+# HTTP client
+httpx>=0.25,<1
+
+# Dev / Test
+pytest>=7.4,<9
+pytest-asyncio>=0.23,<1
+pytest-cov>=4.1,<6
+ruff>=0.1,<1
+mypy>=1.7,<2
+factory-boy>=3.3,<4

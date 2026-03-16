@@ -1,0 +1,12 @@
+# Crawler configuration
+crawl_delay: 1.5
+max_retries: 3
+concurrent_requests: 8
+
+user_agent: "ScrapingPlatform/1.0 (+https://github.com/yourorg/scraping-platform)"
+
+# Per-domain overrides
+domains:
+  example.com:
+    crawl_delay: 2.0
+    concurrent_requests: 4

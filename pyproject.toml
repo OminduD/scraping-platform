@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "scraping-platform"
+version = "1.0.0"
+description = "A distributed web scraping platform for collecting, processing, and serving public website data."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "Scraping Platform Contributors"},
+]
+keywords = ["scraping", "crawling", "etl", "fastapi", "scrapy"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3.11",
+    "Framework :: FastAPI",
+    "Framework :: Scrapy",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+]
+
+dependencies = [
+    "scrapy>=2.11,<3",
+    "playwright>=1.40,<2",
+    "fastapi>=0.104,<1",
+    "uvicorn[standard]>=0.24,<1",
+    "sqlalchemy>=2.0,<3",
+    "alembic>=1.13,<2",
+    "psycopg2-binary>=2.9,<3",
+    "redis>=5.0,<6",
+    "pandas>=2.1,<3",
+    "pydantic>=2.5,<3",
+    "pydantic-settings>=2.1,<3",
+    "pyyaml>=6.0,<7",
+    "prometheus-client>=0.19,<1",
+    "structlog>=23.2,<25",
+    "httpx>=0.25,<1",
+    "beautifulsoup4>=4.12,<5",
+    "lxml>=4.9,<6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4,<9",
+    "pytest-asyncio>=0.23,<1",
+    "pytest-cov>=4.1,<6",
+    "httpx>=0.25,<1",
+    "ruff>=0.1,<1",
+    "mypy>=1.7,<2",
+    "factory-boy>=3.3,<4",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

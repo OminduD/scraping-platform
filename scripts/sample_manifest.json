@@ -1,0 +1,10 @@
+[
+  {
+    "spider": "products",
+    "url": "https://books.toscrape.com/catalogue/page-1.html"
+  },
+  {
+    "spider": "jobs",
+    "url": "https://realpython.github.io/fake-jobs/"
+  }
+]
