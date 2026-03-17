@@ -1,0 +1,9 @@
+# Target URLs for scraping (one URL per line)
+# Lines starting with # are comments and will be ignored
+# Blank lines are also ignored
+
+# Product pages
+https://books.toscrape.com/catalogue/page-1.html
+
+# Job listing pages
+# https://realpython.github.io/fake-jobs/
