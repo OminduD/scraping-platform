@@ -29,8 +29,8 @@ class JobSpider(BaseSpider):
     custom_settings: dict[str, Any] = {
         "DOWNLOAD_DELAY": 2.0,
         "FEEDS": {
-            "data/processed/jobs.csv": {
-                "format": "csv",
+            "data/processed/jobs.json": {
+                "format": "json",
                 "encoding": "utf-8",
                 "overwrite": True,
             },
