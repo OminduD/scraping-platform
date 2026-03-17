@@ -24,8 +24,8 @@ class AnixSpider(BaseSpider):
     custom_settings: dict[str, Any] = {
         "DOWNLOAD_DELAY": 1.5,
         "FEEDS": {
-            "data/processed/anix_products.csv": {
-                "format": "csv",
+            "data/processed/anix_products.json": {
+                "format": "json",
                 "encoding": "utf-8",
                 "overwrite": True,
             },
@@ -46,10 +46,16 @@ class AnixSpider(BaseSpider):
         ).strip()
 
         if title or price:
+            image_url = (
+                response.css("div.woocommerce-product-gallery img::attr(src)").get("")
+                or response.css(".product img::attr(src)").get("")
+            )
             self._record_item("product")
             yield {
                 "title": title,
                 "price": price,
                 "url": response.url,
+                "image_url": image_url,
+                "image_urls": [image_url] if image_url else [],
                 "source": domain,
             }
