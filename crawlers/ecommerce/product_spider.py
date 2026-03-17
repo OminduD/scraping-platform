@@ -30,8 +30,8 @@ class ProductSpider(BaseSpider):
     custom_settings: dict[str, Any] = {
         "DOWNLOAD_DELAY": 1.5,
         "FEEDS": {
-            "data/processed/products.csv": {
-                "format": "csv",
+            "data/processed/products.json": {
+                "format": "json",
                 "encoding": "utf-8",
                 "overwrite": True,
             },
@@ -60,10 +60,15 @@ class ProductSpider(BaseSpider):
 
     def _parse_books_toscrape(self, response: scrapy.http.Response) -> Generator:
         for product in response.css("article.product_pod"):
+            image_url = response.urljoin(
+                product.css("div.image_container img::attr(src)").get("")
+            )
             item = {
                 "title": product.css("h3 a::attr(title)").get("").strip(),
                 "price": product.css("p.price_color::text").get("").strip(),
                 "url": response.urljoin(product.css("h3 a::attr(href)").get("")),
+                "image_url": image_url,
+                "image_urls": [image_url] if image_url else [],
                 "availability": product.css("p.availability::text").re_first(r"\S+"),
                 "rating": product.css("p.star-rating::attr(class)").re_first(r"star-rating (\w+)"),
                 "source": "books.toscrape.com",
@@ -106,6 +111,7 @@ class ProductSpider(BaseSpider):
                 "price": price,
                 "url": response.urljoin(product_url),
                 "image_url": image_url,
+                "image_urls": [image_url] if image_url else [],
                 "source": domain,
             }
             self._record_item("product")
