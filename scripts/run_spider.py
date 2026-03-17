@@ -6,8 +6,10 @@ Usage:
     python -m scripts.run_spider products --url https://example.com
     python -m scripts.run_spider products --urls https://a.com https://b.com
     python -m scripts.run_spider products --url-file configs/urls.txt
+    python -m scripts.run_spider products --sitemap https://example.com/sitemap.xml
 
 Priority: --url/--urls > --url-file > spider default start_urls
+Sitemap: --sitemap can be combined with any spider to discover URLs from a sitemap.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from scrapy.utils.project import get_project_settings
 
 SPIDERS = {
     "products": "crawlers.ecommerce.product_spider.ProductSpider",
+    "anix": "crawlers.ecommerce.anix_spider.AnixSpider",
     "jobs": "crawlers.jobs.job_spider.JobSpider",
 }
 
@@ -49,6 +52,14 @@ def main() -> None:
     url_group.add_argument("--urls", nargs="+", help="Override with multiple start URLs")
     url_group.add_argument("--url-file", help="Path to a text file with URLs (one per line)")
 
+    parser.add_argument(
+        "--sitemap",
+        nargs="+",
+        metavar="URL",
+        help="Discover URLs from sitemap(s) instead of using start_urls. "
+             "Works with any spider. Example: --sitemap https://example.com/sitemap.xml",
+    )
+
     args = parser.parse_args()
 
     dotted_path = SPIDERS[args.spider]
@@ -67,6 +78,9 @@ def main() -> None:
         kwargs["start_urls"] = args.urls
     elif args.url_file:
         kwargs["start_urls"] = load_urls_from_file(args.url_file)
+
+    if args.sitemap:
+        kwargs["sitemap_urls"] = args.sitemap
 
     process.crawl(spider_cls, **kwargs)
     process.start()

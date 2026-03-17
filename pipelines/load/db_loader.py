@@ -19,14 +19,20 @@ logger = structlog.get_logger(__name__)
 class DatabasePipeline:
     """Write cleaned items to the database."""
 
-    def open_spider(self, spider) -> None:  # noqa: ANN001
+    @classmethod
+    def from_crawler(cls, crawler):
+        pipeline = cls()
+        pipeline.crawler = crawler
+        return pipeline
+
+    def open_spider(self) -> None:
         self.session = SessionLocal()
 
-    def close_spider(self, spider) -> None:  # noqa: ANN001
+    def close_spider(self) -> None:
         self.session.close()
 
-    def process_item(self, item: dict[str, Any], spider) -> dict[str, Any]:
-        spider_name: str = getattr(spider, "name", "")
+    def process_item(self, item: dict[str, Any]) -> dict[str, Any]:
+        spider_name: str = self.crawler.spider.name
 
         if spider_name == "products":
             self._upsert_product(item)

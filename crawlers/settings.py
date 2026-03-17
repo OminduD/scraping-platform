@@ -4,7 +4,9 @@ BOT_NAME = "scraping_platform"
 SPIDER_MODULES = ["crawlers.ecommerce", "crawlers.jobs"]
 NEWSPIDER_MODULE = "crawlers"
 
-ROBOTSTXT_OBEY = True
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+
+ROBOTSTXT_OBEY = False
 
 DOWNLOAD_DELAY = 1.5
 CONCURRENT_REQUESTS = 8
@@ -22,6 +24,7 @@ ITEM_PIPELINES = {
     "pipelines.extract.html_parser.HtmlCleanPipeline": 100,
     "pipelines.transform.cleaner.TransformPipeline": 200,
     "pipelines.load.db_loader.DatabasePipeline": 300,
+    "pipelines.export.html_exporter.HtmlExportPipeline": 400,
 }
 
 LOG_LEVEL = "INFO"

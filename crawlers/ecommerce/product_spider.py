@@ -1,12 +1,16 @@
-"""Product listing spider — scrapes product data from an example e-commerce site.
+"""Product listing spider — scrapes product data from e-commerce sites.
 
-This is a demonstration spider.  Replace `start_urls` and selector logic with
-a real target to use in production.
+Supports:
+- books.toscrape.com  (default demo site)
+- WooCommerce stores  (detected automatically by page structure)
+
+Pass ``--url`` to *run_spider* to crawl any supported store.
 """
 
 from __future__ import annotations
 
 from typing import Any, Generator
+from urllib.parse import urlparse
 
 import scrapy
 import structlog
@@ -25,11 +29,36 @@ class ProductSpider(BaseSpider):
 
     custom_settings: dict[str, Any] = {
         "DOWNLOAD_DELAY": 1.5,
+        "FEEDS": {
+            "data/processed/products.csv": {
+                "format": "csv",
+                "encoding": "utf-8",
+                "overwrite": True,
+            },
+        },
     }
+
+    def __init__(self, *args: Any, start_urls: list[str] | None = None, **kwargs: Any) -> None:
+        if start_urls:
+            self.start_urls = start_urls
+            # Derive allowed_domains from the provided URLs
+            self.allowed_domains = list(
+                {urlparse(u).hostname for u in start_urls if urlparse(u).hostname}
+            )
+        super().__init__(*args, **kwargs)
 
     def parse(self, response: scrapy.http.Response, **kwargs) -> Generator:
         self._record_success(response.url)
 
+        # Detect site type and delegate to the right parser
+        if response.css("ul.products li.product"):
+            yield from self._parse_woocommerce(response)
+        else:
+            yield from self._parse_books_toscrape(response)
+
+    # ── books.toscrape.com ───────────────────────────────────────────
+
+    def _parse_books_toscrape(self, response: scrapy.http.Response) -> Generator:
         for product in response.css("article.product_pod"):
             item = {
                 "title": product.css("h3 a::attr(title)").get("").strip(),
@@ -43,8 +72,48 @@ class ProductSpider(BaseSpider):
             logger.debug("item.scraped", spider=self.name, title=item["title"])
             yield item
 
-        # Follow pagination
         next_page = response.css("li.next a::attr(href)").get()
+        if next_page:
+            self._record_start(response.urljoin(next_page))
+            yield response.follow(next_page, callback=self.parse, errback=self._on_error)
+
+    # ── WooCommerce stores ───────────────────────────────────────────
+
+    def _parse_woocommerce(self, response: scrapy.http.Response) -> Generator:
+        domain = urlparse(response.url).hostname or "unknown"
+
+        for product in response.css("ul.products li.product"):
+            link = product.css("a.woocommerce-LoopProduct-link, a[href*='/product/']")
+            title = (
+                product.css("h2.woocommerce-loop-product__title::text").get("")
+                or product.css("h2::text").get("")
+            ).strip()
+            # Prefer sale (ins) price, fall back to regular price
+            price = (
+                product.css(".price ins .woocommerce-Price-amount::text").get("")
+                or product.css(".price .woocommerce-Price-amount::text").get("")
+                or product.css(".price ins::text").get("")
+                or product.css(".price::text").get("")
+            ).strip()
+            product_url = link.attrib.get("href", "") if link else ""
+            image_url = (
+                product.css("img::attr(src)").get("")
+                or product.css("img::attr(data-src)").get("")
+            )
+
+            item = {
+                "title": title,
+                "price": price,
+                "url": response.urljoin(product_url),
+                "image_url": image_url,
+                "source": domain,
+            }
+            self._record_item("product")
+            logger.debug("item.scraped", spider=self.name, title=item["title"])
+            yield item
+
+        # WooCommerce pagination
+        next_page = response.css("a.next.page-numbers::attr(href)").get()
         if next_page:
             self._record_start(response.urljoin(next_page))
             yield response.follow(next_page, callback=self.parse, errback=self._on_error)

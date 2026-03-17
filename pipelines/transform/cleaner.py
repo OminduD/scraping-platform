@@ -20,10 +20,16 @@ _seen_urls: set[str] = set()
 class TransformPipeline:
     """Clean field values and drop duplicate items."""
 
-    def open_spider(self, spider) -> None:  # noqa: ANN001
+    @classmethod
+    def from_crawler(cls, crawler):
+        pipeline = cls()
+        pipeline.crawler = crawler
+        return pipeline
+
+    def open_spider(self) -> None:
         _seen_urls.clear()
 
-    def process_item(self, item: dict[str, Any], spider) -> dict[str, Any]:
+    def process_item(self, item: dict[str, Any]) -> dict[str, Any]:
         url = item.get("url", "")
 
         # ── Deduplication ────────────────────────────────────────────
@@ -46,7 +52,7 @@ class TransformPipeline:
         if "source" in item:
             item["source"] = item["source"].lower()
 
-        logger.debug("transform.done", spider=spider.name, url=url)
+        logger.debug("transform.done", spider=self.crawler.spider.name, url=url)
         return item
 
 

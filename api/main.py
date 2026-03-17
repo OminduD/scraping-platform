@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from prometheus_client import make_asgi_app
 
-from api.routes import products, jobs, analytics
+from api.routes import products, jobs, analytics, export
 from data_models import Base, engine
 
 
@@ -29,6 +29,7 @@ app = FastAPI(
 app.include_router(products.router, prefix="/products", tags=["Products"])
 app.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])
 app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
+app.include_router(export.router, prefix="/export", tags=["Export"])
 
 # ── Prometheus metrics endpoint ──────────────────────────────────────
 metrics_app = make_asgi_app()

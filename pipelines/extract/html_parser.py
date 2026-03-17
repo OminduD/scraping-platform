@@ -21,13 +21,19 @@ class HtmlCleanPipeline:
     # Fields that may contain HTML fragments
     HTML_FIELDS = {"description", "title", "company"}
 
-    def process_item(self, item: dict[str, Any], spider) -> dict[str, Any]:
+    @classmethod
+    def from_crawler(cls, crawler):
+        pipeline = cls()
+        pipeline.crawler = crawler
+        return pipeline
+
+    def process_item(self, item: dict[str, Any]) -> dict[str, Any]:
         for field in self.HTML_FIELDS:
             raw = item.get(field)
             if raw and isinstance(raw, str) and "<" in raw:
                 cleaned = BeautifulSoup(raw, "lxml").get_text(separator=" ")
                 item[field] = _collapse_whitespace(cleaned)
-                logger.debug("extract.html_clean", field=field, spider=spider.name)
+                logger.debug("extract.html_clean", field=field, spider=self.crawler.spider.name)
         return item
 
 
