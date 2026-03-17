@@ -52,6 +52,10 @@ class TransformPipeline:
         if "source" in item:
             item["source"] = item["source"].lower()
 
+        # ── Strip ImagesPipeline internal fields ──────────────────────
+        item.pop("image_urls", None)
+        item.pop("images", None)
+
         logger.debug("transform.done", spider=self.crawler.spider.name, url=url)
         return item
 
