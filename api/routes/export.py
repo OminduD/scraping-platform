@@ -1,4 +1,4 @@
-"""Export endpoints — download products/jobs as CSV or HTML."""
+"""Export endpoints — download products/jobs as CSV, TSV, or HTML."""
 
 from __future__ import annotations
 
@@ -27,6 +27,16 @@ def _rows_to_csv(rows: list[dict]) -> str:
         return ""
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=rows[0].keys())
+    writer.writeheader()
+    writer.writerows(rows)
+    return buf.getvalue()
+
+
+def _rows_to_tsv(rows: list[dict]) -> str:
+    if not rows:
+        return ""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=rows[0].keys(), delimiter="\t")
     writer.writeheader()
     writer.writerows(rows)
     return buf.getvalue()
@@ -148,6 +158,24 @@ def export_products_html(
     )
 
 
+@router.get("/products/tsv")
+def export_products_tsv(
+    source: str | None = None,
+    limit: int = Query(MAX_EXPORT_ROWS, ge=1, le=MAX_EXPORT_ROWS),
+    db: Session = Depends(get_db),
+):
+    """Download all products as a TSV file."""
+    svc = ProductService(db)
+    products = svc.list_products(skip=0, limit=limit, source=source)
+    rows = [_product_to_dict(p) for p in products]
+    content = _rows_to_tsv(rows)
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="text/tab-separated-values",
+        headers={"Content-Disposition": "attachment; filename=products.tsv"},
+    )
+
+
 # ── job exports ──────────────────────────────────────────────────────
 
 
@@ -184,4 +212,22 @@ def export_jobs_html(
         io.BytesIO(content.encode("utf-8")),
         media_type="text/html",
         headers={"Content-Disposition": "attachment; filename=jobs.html"},
+    )
+
+
+@router.get("/jobs/tsv")
+def export_jobs_tsv(
+    source: str | None = None,
+    limit: int = Query(MAX_EXPORT_ROWS, ge=1, le=MAX_EXPORT_ROWS),
+    db: Session = Depends(get_db),
+):
+    """Download all jobs as a TSV file."""
+    svc = JobService(db)
+    jobs = svc.list_jobs(skip=0, limit=limit, source=source)
+    rows = [_job_to_dict(j) for j in jobs]
+    content = _rows_to_tsv(rows)
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="text/tab-separated-values",
+        headers={"Content-Disposition": "attachment; filename=jobs.tsv"},
     )
