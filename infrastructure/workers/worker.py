@@ -52,6 +52,11 @@ def process_job(job: dict[str, Any]) -> bool:
     cmd = [sys.executable, "-m", "scripts.run_spider", spider_name]
     if "url" in job:
         cmd.extend(["--url", job["url"]])
+    elif "urls" in job:
+        cmd.append("--urls")
+        cmd.extend(job["urls"])
+    elif "url_file" in job:
+        cmd.extend(["--url-file", job["url_file"]])
 
     logger.info("worker.starting_crawl", spider=spider_name, cmd=cmd)
     result = subprocess.run(cmd, capture_output=True, text=True)
