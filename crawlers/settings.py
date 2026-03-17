@@ -21,11 +21,17 @@ DEFAULT_REQUEST_HEADERS = {
 }
 
 ITEM_PIPELINES = {
+    "scrapy.pipelines.images.ImagesPipeline": 50,
     "pipelines.extract.html_parser.HtmlCleanPipeline": 100,
     "pipelines.transform.cleaner.TransformPipeline": 200,
     "pipelines.load.db_loader.DatabasePipeline": 300,
     "pipelines.export.html_exporter.HtmlExportPipeline": 400,
 }
+
+# ── Image downloading ────────────────────────────────────────────────
+IMAGES_STORE = "data/images"
+IMAGES_URLS_FIELD = "image_urls"
+IMAGES_RESULT_FIELD = "images"
 
 LOG_LEVEL = "INFO"
 
