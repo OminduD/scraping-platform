@@ -61,6 +61,14 @@
     .stat-title { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 5px; }
     .stat-val { font-size: 1.5rem; font-weight: bold; }
     
+    /* Dropdown */
+    .dropdown { position: relative; display: inline-block; }
+    .dropdown-content { display: none; position: absolute; background-color: var(--card-bg); min-width: 120px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); border-radius: 6px; z-index: 10; margin-top: 4px; overflow: hidden; border: 1px solid var(--border); }
+    .dropdown-content a { color: var(--text); padding: 10px 16px; text-decoration: none; display: block; border-bottom: 1px solid var(--border); }
+    .dropdown-content a:last-child { border-bottom: none; }
+    .dropdown-content a:hover { background-color: var(--bg); }
+    .dropdown:hover .dropdown-content { display: block; }
+    
     td img { max-height: 50px; border-radius: 4px; }
     .td-truncate { max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   </style>
@@ -133,9 +141,14 @@
           <select id="preview-select">
             <option value="">-- Loading files --</option>
           </select>
-          <a href="#" id="preview-export-csv" class="btn btn-outline" style="display:none;" target="_blank">Download CSV</a>
-          <a href="#" id="preview-export-tsv" class="btn btn-outline" style="display:none;" target="_blank">Download TSV</a>
-          <a href="#" id="preview-export-psv" class="btn btn-outline" style="display:none;" target="_blank">Download PSV</a>
+          <div class="dropdown" id="preview-export-dropdown" style="display:none;">
+            <button class="btn btn-outline">Download ▾</button>
+            <div class="dropdown-content">
+              <a href="#" id="preview-export-csv" target="_blank">CSV</a>
+              <a href="#" id="preview-export-tsv" target="_blank">TSV</a>
+              <a href="#" id="preview-export-psv" target="_blank">PSV</a>
+            </div>
+          </div>
         </div>
         
         <div id="preview-msg" style="text-align:center; padding: 40px; color: var(--text-muted);">
@@ -196,7 +209,7 @@
       if(fn) loadPreviewData(fn);
       else {
         document.getElementById('preview-workspace').style.display = 'none';
-        document.getElementById('preview-export-csv').style.display = 'none';
+        document.getElementById('preview-export-dropdown').style.display = 'none';
         document.getElementById('preview-msg').style.display = 'block';
         document.getElementById('preview-msg').textContent = 'Please select a file to preview.';
       }
@@ -260,18 +273,13 @@
     document.getElementById('preview-msg').textContent = 'Loading data...';
     document.getElementById('preview-workspace').style.display = 'none';
     
+    // Show Dropdown Wrapper
+    document.getElementById('preview-export-dropdown').style.display = 'inline-block';
+    
     // Update Export links
-    const csvBtn = document.getElementById('preview-export-csv');
-    csvBtn.style.display = 'inline-block';
-    csvBtn.href = `/export/raw/${encodeURIComponent(filename)}/csv`;
-    
-    const tsvBtn = document.getElementById('preview-export-tsv');
-    tsvBtn.style.display = 'inline-block';
-    tsvBtn.href = `/export/raw/${encodeURIComponent(filename)}/tsv`;
-    
-    const psvBtn = document.getElementById('preview-export-psv');
-    psvBtn.style.display = 'inline-block';
-    psvBtn.href = `/export/raw/${encodeURIComponent(filename)}/psv`;
+    document.getElementById('preview-export-csv').href = `/export/raw/${encodeURIComponent(filename)}/csv`;
+    document.getElementById('preview-export-tsv').href = `/export/raw/${encodeURIComponent(filename)}/tsv`;
+    document.getElementById('preview-export-psv').href = `/export/raw/${encodeURIComponent(filename)}/psv`;
     
     try {
       const res = await fetch(`/api/v1/raw-file-preview?filename=${encodeURIComponent(filename)}&page=${page}&limit=50`);
