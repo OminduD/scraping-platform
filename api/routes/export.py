@@ -535,6 +535,33 @@ def export_raw_json(filename: str):
     )
 
 
+@router.get("/raw-file-preview")
+def api_raw_file_preview(
+    filename: str = Query(..., description="Raw file name to preview"),
+    limit: int = Query(20, ge=1, le=200),
+):
+    """Preview rows from a raw file for the static dashboard."""
+    file_path = RAW_DATA_DIR / filename
+
+    if not file_path.exists():
+        return {"ok": False, "error": f"Raw file not found: {filename}"}
+
+    try:
+        rows = _load_raw_json(filename)
+    except json.JSONDecodeError as exc:
+        return {"ok": False, "error": f"Invalid JSON in {filename}: {str(exc)}"}
+    except HTTPException as e:
+        return {"ok": False, "error": str(e.detail)}
+
+    return {
+        "ok": True,
+        "filename": Path(filename).name,
+        "total": len(rows),
+        "preview_count": min(limit, len(rows)),
+        "items": rows[:limit],
+    }
+
+
 @router.get("/raw/{filename}/preview")
 def preview_raw_file(
     filename: str,
