@@ -67,13 +67,19 @@ class BaseSpider(scrapy.Spider):
         self.custom_settings.setdefault("CONCURRENT_REQUESTS", settings.concurrent_requests)
         self._request_start_times: dict[str, float] = {}
 
+        # Pre-set allowed_domains from sitemap URLs to prevent OffsiteMiddleware filtering
+        if self.sitemap_urls:
+            sitemap_domains = {urlparse(u).hostname for u in self.sitemap_urls if urlparse(u).hostname}
+            existing = set(getattr(self, "allowed_domains", []) or [])
+            self.allowed_domains = list(existing | sitemap_domains)
+
     # ── Hooks ────────────────────────────────────────────────────────
 
     def start_requests(self):
         if self.sitemap_urls:
             for url in self.sitemap_urls:
                 logger.info("sitemap.fetch", spider=self.name, url=url)
-                yield scrapy.Request(url, callback=self._parse_sitemap, errback=self._on_error)
+                yield scrapy.Request(url, callback=self._parse_sitemap, errback=self._on_error, dont_filter=True)
         else:
             for url in self.start_urls:
                 logger.info("crawl.start", spider=self.name, url=url)
@@ -86,7 +92,7 @@ class BaseSpider(scrapy.Spider):
         # Follow nested sitemap index entries
         for sitemap_url in nested_sitemaps:
             logger.info("sitemap.nested", spider=self.name, url=sitemap_url)
-            yield scrapy.Request(sitemap_url, callback=self._parse_sitemap, errback=self._on_error)
+            yield scrapy.Request(sitemap_url, callback=self._parse_sitemap, errback=self._on_error, dont_filter=True)
 
         # Filter and follow page URLs
         urls = filter_urls(page_urls, self.sitemap_filter_patterns)
