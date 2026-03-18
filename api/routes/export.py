@@ -431,3 +431,74 @@ def load_to_postgresql(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+# ── Raw file exports ──────────────────────────────────────────────────
+
+
+def _load_raw_json(filename: str) -> list[dict]:
+    """Load raw JSON file and return list of records."""
+    file_path = RAW_DATA_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {filename}")
+
+    try:
+        text = file_path.read_text(encoding="utf-8")
+        data = json.loads(text)
+        if isinstance(data, dict):
+            data = [data]
+        return data
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+
+
+@router.get("/raw/{filename}/csv")
+def export_raw_csv(filename: str):
+    """Download raw JSON file as CSV."""
+    rows = _load_raw_json(filename)
+    content = _rows_to_csv(rows)
+    csv_filename = filename.replace(".json", ".csv")
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={csv_filename}"},
+    )
+
+
+@router.get("/raw/{filename}/tsv")
+def export_raw_tsv(filename: str):
+    """Download raw JSON file as TSV."""
+    rows = _load_raw_json(filename)
+    content = _rows_to_tsv(rows)
+    tsv_filename = filename.replace(".json", ".tsv")
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="text/tab-separated-values",
+        headers={"Content-Disposition": f"attachment; filename={tsv_filename}"},
+    )
+
+
+@router.get("/raw/{filename}/psv")
+def export_raw_psv(filename: str):
+    """Download raw JSON file as PSV."""
+    rows = _load_raw_json(filename)
+    content = _rows_to_psv(rows)
+    psv_filename = filename.replace(".json", ".psv")
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="text/plain",
+        headers={"Content-Disposition": f"attachment; filename={psv_filename}"},
+    )
+
+
+@router.get("/raw/{filename}/html")
+def export_raw_html(filename: str):
+    """Download raw JSON file as HTML table."""
+    rows = _load_raw_json(filename)
+    content = _rows_to_html(rows, f"Raw Data — {filename}")
+    html_filename = filename.replace(".json", ".html")
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="text/html",
+        headers={"Content-Disposition": f"attachment; filename={html_filename}"},
+    )
