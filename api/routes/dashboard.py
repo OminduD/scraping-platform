@@ -365,7 +365,8 @@ def dashboard_raw_file_preview(filename: str, limit: int = Query(20, ge=1, le=20
 @router.get("/raw-file-preview")
 def api_raw_file_preview(
     filename: str = Query(..., description="Raw file name to preview"),
-    limit: int = Query(20, ge=1, le=200),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=500),
 ):
     """Preview rows from a raw file for the static dashboard."""
     try:
@@ -375,12 +376,19 @@ def api_raw_file_preview(
     except json.JSONDecodeError as exc:
         return {"ok": False, "error": f"Invalid JSON in {filename}: {exc}"}
 
+    total = len(rows)
+    start_idx = (page - 1) * limit
+    end_idx = start_idx + limit
+    paginated_items = rows[start_idx:end_idx]
+
     return {
         "ok": True,
         "filename": Path(filename).name,
-        "total": len(rows),
-        "preview_count": min(limit, len(rows)),
-        "items": rows[:limit],
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "preview_count": len(paginated_items),
+        "items": paginated_items,
     }
 
 
