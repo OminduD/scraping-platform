@@ -90,6 +90,71 @@ def _render_raw_preview_table(items: list[dict]) -> str:
 """
 
 
+def _load_raw_file_rows(filename: str) -> list[dict[str, Any]]:
+    """Load raw rows from JSON or JSONL file under data/raw."""
+    safe_name = Path(filename).name
+    path = RAW_OUTPUT_DIR / safe_name
+
+    if not path.exists() or path.suffix.lower() != ".json":
+        raise FileNotFoundError(safe_name)
+
+    text = path.read_text(encoding="utf-8")
+    if not text.strip():
+        return []
+
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            data = [data]
+        if isinstance(data, list):
+            return [row for row in data if isinstance(row, dict)]
+    except json.JSONDecodeError:
+        pass
+
+    # Recover rows from partially written JSON arrays (e.g., interrupted checkpoint writes).
+    decoder = json.JSONDecoder()
+    partial_rows: list[dict[str, Any]] = []
+    idx = text.find("[")
+    if idx >= 0:
+        idx += 1
+        while idx < len(text):
+            # Skip delimiters and whitespace between array elements.
+            while idx < len(text) and text[idx] in " \t\r\n,]":
+                idx += 1
+            if idx >= len(text):
+                break
+            try:
+                obj, idx = decoder.raw_decode(text, idx)
+            except json.JSONDecodeError:
+                break
+
+            if isinstance(obj, dict):
+                partial_rows.append(obj)
+            elif isinstance(obj, list):
+                partial_rows.extend(row for row in obj if isinstance(row, dict))
+
+    if partial_rows:
+        return partial_rows
+
+    rows: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            obj = json.loads(stripped)
+        except json.JSONDecodeError:
+            # Ignore malformed lines and keep whatever valid JSONL rows we can parse.
+            continue
+        if isinstance(obj, dict):
+            rows.append(obj)
+
+    if rows:
+        return rows
+
+    raise json.JSONDecodeError("Unable to parse JSON content", text, 0)
+
+
 def _page_shell(title: str, body: str, nav_active: str = "") -> str:
     """Wrap body content in a full HTML page with navigation."""
 
@@ -249,6 +314,74 @@ def api_raw_files():
                 "modified": datetime.fromtimestamp(f.stat().st_mtime, timezone.utc).isoformat(),
             })
     return {"files": files}
+
+
+@router.get("/raw-preview/{filename:path}", response_class=HTMLResponse)
+def dashboard_raw_file_preview(filename: str, limit: int = Query(20, ge=1, le=200)):
+    """Display raw file preview as HTML table."""
+    try:
+        rows = _load_raw_file_rows(filename)
+    except FileNotFoundError:
+        body = f"<h1>Raw File Preview</h1><p class='meta' style='color:#b42318;'>File not found: {escape(filename)}</p>"
+        return _page_shell("Preview Error", body, nav_active="raw_scrape")
+    except json.JSONDecodeError as exc:
+        body = f"<h1>Raw File Preview</h1><p class='meta' style='color:#b42318;'>Invalid JSON in {escape(filename)}: {escape(str(exc))}</p>"
+        return _page_shell("Preview Error", body, nav_active="raw_scrape")
+
+    safe_filename = Path(filename).name
+    total_count = len(rows)
+    preview_count = min(limit, total_count)
+    preview_rows = rows[:limit]
+
+    # Collect column info
+    all_keys = []
+    for item in preview_rows:
+        for k in item.keys():
+            if k not in all_keys:
+                all_keys.append(k)
+
+    table_html = _render_raw_preview_table(preview_rows)
+
+    body = f"""
+<h1>Raw Data Preview</h1>
+<div class="card" style="margin-bottom:1rem;">
+    <h2>{escape(safe_filename)}</h2>
+    <p class="meta">Total Records: {total_count} | Showing: {preview_count} | Columns: {len(all_keys)}</p>
+</div>
+<div class="export-btns" style="margin-bottom:1rem;">
+    <a href="/export/raw/{escape(safe_filename)}/csv" class="btn">Download CSV</a>
+    <a href="/export/raw/{escape(safe_filename)}/tsv" class="btn">Download TSV</a>
+    <a href="/export/raw/{escape(safe_filename)}/psv" class="btn">Download PSV</a>
+    <a href="/export/raw/{escape(safe_filename)}/html" class="btn">Download HTML</a>
+</div>
+<div class="card">
+    {table_html}
+</div>
+<a href="/dashboard/raw-scrape" class="btn" style="margin-top:1rem;">Back to Raw Scrape</a>
+"""
+    return _page_shell(f"Preview: {safe_filename}", body, nav_active="raw_scrape")
+
+
+@router.get("/raw-file-preview")
+def api_raw_file_preview(
+    filename: str = Query(..., description="Raw file name to preview"),
+    limit: int = Query(20, ge=1, le=200),
+):
+    """Preview rows from a raw file for the static dashboard."""
+    try:
+        rows = _load_raw_file_rows(filename)
+    except FileNotFoundError:
+        return {"ok": False, "error": f"Raw file not found: {filename}"}
+    except json.JSONDecodeError as exc:
+        return {"ok": False, "error": f"Invalid JSON in {filename}: {exc}"}
+
+    return {
+        "ok": True,
+        "filename": Path(filename).name,
+        "total": len(rows),
+        "preview_count": min(limit, len(rows)),
+        "items": rows[:limit],
+    }
 
 
 @router.get("/", response_class=HTMLResponse)
