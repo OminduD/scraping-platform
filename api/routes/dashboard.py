@@ -25,6 +25,53 @@ DEFAULT_LIMIT = 100
 RAW_OUTPUT_DIR = Path("data/raw")
 
 
+def _render_raw_preview_table(items: list[dict]) -> str:
+    """Render raw scraped items as an HTML table with images and clickable links."""
+    if not items:
+        return "<p>No items to display.</p>"
+
+    # Collect all unique keys across all items
+    all_keys: list[str] = []
+    for item in items:
+        for k in item.keys():
+            if k not in all_keys:
+                all_keys.append(k)
+
+    # Prioritize common fields
+    priority = ["image_url", "title", "price", "url", "company", "location", "source"]
+    ordered_keys = [k for k in priority if k in all_keys]
+    ordered_keys += [k for k in all_keys if k not in priority]
+
+    headers = "".join(f"<th>{escape(k)}</th>" for k in ordered_keys)
+    rows_html = []
+    for item in items:
+        cells = []
+        for k in ordered_keys:
+            val = item.get(k, "")
+            if k == "image_url" and val:
+                # Render as image
+                cells.append(f'<td><img class="thumb" src="{escape(str(val))}" alt=""></td>')
+            elif k == "url" and val:
+                # Render as clickable link
+                cells.append(f'<td><a href="{escape(str(val))}" target="_blank">View</a></td>')
+            elif isinstance(val, str) and val.startswith("http"):
+                # Any other URL field - make clickable
+                cells.append(f'<td><a href="{escape(val)}" target="_blank">{escape(val[:40])}...</a></td>')
+            else:
+                # Regular value - escape and truncate if too long
+                str_val = str(val) if val is not None else ""
+                display_val = str_val[:100] + "..." if len(str_val) > 100 else str_val
+                cells.append(f"<td>{escape(display_val)}</td>")
+        rows_html.append(f"<tr>{''.join(cells)}</tr>")
+
+    return f"""
+<table>
+    <thead><tr>{headers}</tr></thead>
+    <tbody>{''.join(rows_html)}</tbody>
+</table>
+"""
+
+
 def _page_shell(title: str, body: str, nav_active: str = "") -> str:
     """Wrap body content in a full HTML page with navigation."""
 
@@ -59,7 +106,12 @@ def _page_shell(title: str, body: str, nav_active: str = "") -> str:
   img.thumb{{ max-width:60px; max-height:60px; object-fit:cover; border-radius:4px; }}
   a.btn{{ display:inline-block; padding:.4rem 1rem; background:#0d6efd; color:#fff; text-decoration:none; border-radius:4px; font-size:.85rem; margin-right:.4rem; margin-top:.4rem; }}
   a.btn:hover{{ background:#0b5ed7; }}
+  button.btn{{ display:inline-block; padding:.4rem 1rem; background:#0d6efd; color:#fff; border:none; border-radius:4px; font-size:.85rem; margin-right:.4rem; margin-top:.4rem; cursor:pointer; }}
+  button.btn:hover{{ background:#0b5ed7; }}
+  .btn-success{{ background:#198754; }}
+  .btn-success:hover{{ background:#157347; }}
   .pagination{{ margin-top:1rem; }}
+  .export-btns{{ margin-top:1rem; margin-bottom:1rem; }}
 </style>
 </head>
 <body>
@@ -130,6 +182,42 @@ def _run_raw_scrape(
         "count": len(payload),
         "preview": payload[:max_items],
     }
+
+
+# ── JSON API endpoints (for static frontend) ─────────────────────────────
+
+
+@router.post("/raw-scrape")
+def api_raw_scrape(
+    spider: str = Form(...),
+    url: str | None = Form(default=None),
+    preview_limit: int = Form(default=10),
+):
+    """Run a manual scrape and return JSON result."""
+    if spider not in {"products", "jobs"}:
+        return {"ok": False, "error": "Invalid spider selected. Choose 'products' or 'jobs'."}
+
+    normalized_url = (url or "").strip() or None
+    safe_preview_limit = max(1, min(preview_limit, 100))
+    return _run_raw_scrape(
+        spider=spider,
+        url=normalized_url,
+        max_items=safe_preview_limit,
+    )
+
+
+@router.get("/raw-files")
+def api_raw_files():
+    """List all raw JSON files in data/raw."""
+    files = []
+    if RAW_OUTPUT_DIR.exists():
+        for f in sorted(RAW_OUTPUT_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
+            files.append({
+                "name": f.name,
+                "size": f.stat().st_size,
+                "modified": datetime.fromtimestamp(f.stat().st_mtime, timezone.utc).isoformat(),
+            })
+    return {"files": files}
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -328,7 +416,6 @@ def dashboard_raw_scrape():
         <select name="spider" style="display:block;margin-top:.35rem;padding:.45rem;width:100%;">
             <option value="products">products</option>
             <option value="jobs">jobs</option>
-            <option value="anix">anix</option>
         </select>
     </label>
     <label>
@@ -352,7 +439,7 @@ def dashboard_raw_scrape_run(
         preview_limit: int = Form(default=10),
 ):
         """Run a manual scrape and show saved JSON output details in UI."""
-        if spider not in {"products", "jobs", "anix"}:
+        if spider not in {"products", "jobs"}:
                 body = "<h1>Manual Raw Scrape</h1><p class='meta'>Invalid spider selected.</p>"
                 return _page_shell("Manual Raw Scrape", body, nav_active="raw_scrape")
 
@@ -372,18 +459,40 @@ def dashboard_raw_scrape_run(
 """
                 return _page_shell("Manual Raw Scrape", body, nav_active="raw_scrape")
 
-        preview_json = escape(json.dumps(result["preview"], indent=2, ensure_ascii=True))
+        # Render preview as table with images and clickable links
+        preview_table = _render_raw_preview_table(result["preview"])
+
+        # Get the filename for export links
+        file_name = Path(result["file"]).name
+        item_type = "job" if "job" in spider.lower() else "product"
+
         body = f"""
 <h1>Manual Raw Scrape</h1>
-<p class="meta" style="color:#027a48;">Saved {result['count']} raw items.</p>
+<p class="meta" style="color:#027a48;">Saved {result['count']} raw items to data/raw.</p>
 <div class="card" style="margin-bottom:1rem;">
     <h2>Saved File</h2>
     <p>{escape(result['file'])}</p>
     <p class="meta">Spider: {escape(spider)}{f" | URL: {escape(normalized_url)}" if normalized_url else ""}</p>
 </div>
+
+<div class="card" style="margin-bottom:1rem;">
+    <h2>Export Options</h2>
+    <div class="export-btns">
+        <a href="/export/raw/{escape(file_name)}/csv" class="btn">CSV</a>
+        <a href="/export/raw/{escape(file_name)}/tsv" class="btn">TSV</a>
+        <a href="/export/raw/{escape(file_name)}/psv" class="btn">PSV</a>
+        <a href="/export/raw/{escape(file_name)}/html" class="btn">HTML</a>
+    </div>
+    <form method="post" action="/dashboard/load-to-db" style="display:inline;">
+        <input type="hidden" name="filename" value="{escape(file_name)}">
+        <input type="hidden" name="item_type" value="{item_type}">
+        <button type="submit" class="btn btn-success">Load to PostgreSQL</button>
+    </form>
+</div>
+
 <div class="card">
     <h2>Preview (first {safe_preview_limit})</h2>
-    <pre style="white-space:pre-wrap;word-break:break-word;background:#101828;color:#f2f4f7;padding:1rem;border-radius:6px;overflow:auto;">{preview_json}</pre>
+    {preview_table}
 </div>
 <a href="/dashboard/raw-scrape" class="btn">Run another raw scrape</a>
 """
