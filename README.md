@@ -28,19 +28,18 @@ Built with **Python 3.14**, **Scrapy**, **FastAPI**, **Redis**, **PostgreSQL**, 
                                                               │
                                                               ▼
                                                      ┌────────────────┐
-                                                     │  FastAPI (REST)│
-                                                     │  /products     │
-                                                     │  /jobs         │
-                                                     │  /analytics    │
-                                                     └────────────────┘
+                                                     │  FastAPI       │
+                                                     │  REST API +    │
+                                                     │  Web Dashboard │
+                                                     └────────┬───────┘
                                                               │
-                                                     ┌────────────────┐
-                                                     │  Prometheus +  │
-                                                     │   Grafana      │
-                                                     └────────────────┘
+                                                     ┌────────┼───────┐
+                                                     ▼        ▼       ▼
+                                              Dashboard  Export   Metrics
+                                              (HTML/JS)  (CSV/TSV) (Prom)
 ```
 
-**Scheduler** enqueues crawl jobs into **Redis**. **Workers** (horizontally scalable) pop jobs and execute **Scrapy spiders**. Scraped data flows through a three-stage **ETL pipeline** (extract HTML → transform/clean → load into PostgreSQL). The **FastAPI** service serves the data over REST. **Prometheus** collects metrics and **Grafana** visualizes them.
+**Scheduler** enqueues crawl jobs into **Redis**. **Workers** (horizontally scalable) pop jobs and execute **Scrapy spiders**. Scraped data flows through a three-stage **ETL pipeline** (extract HTML → transform/clean → load into PostgreSQL). The **FastAPI** service serves data via REST API and an interactive web dashboard with export capabilities. **Prometheus** collects metrics and **Grafana** visualizes them.
 
 ## Project Structure
 
@@ -53,16 +52,27 @@ scraping-platform/
 ├── pipelines/              # ETL pipeline stages
 │   ├── extract/            #   HTML parsing & cleanup
 │   ├── transform/          #   Cleaning, dedup, normalization
-│   └── load/               #   PostgreSQL upsert
+│   ├── load/               #   PostgreSQL upsert
+│   └── export/             #   TSV/HTML exporters
 ├── api/                    # FastAPI REST service
-│   ├── routes/             #   Endpoint definitions
+│   ├── routes/             #   REST & dashboard endpoints
 │   ├── services/           #   Business logic
 │   └── schemas/            #   Pydantic response models
+├── static/                 # Web dashboard (HTML/CSS/JS)
+│   ├── index.html          #   Main dashboard
+│   ├── raw-scrape.html     #   Manual scrape interface
+│   ├── load-to-db.html     #   Database loader
+│   ├── css/                #   Stylesheets
+│   └── js/                 #   JavaScript utilities
 ├── data_models/            # SQLAlchemy ORM models
 ├── infrastructure/
 │   ├── scheduler/          # Redis job enqueuer
 │   ├── workers/            # Distributed worker loop
 │   └── storage/            # Raw/processed file storage
+├── data/                   # Data storage
+│   ├── raw/                #   Raw JSON outputs
+│   ├── processed/          #   Processed exports
+│   └── images/             #   Downloaded images
 ├── configs/                # YAML configs & settings
 ├── scripts/                # CLI utilities
 ├── docker/                 # Dockerfiles
@@ -86,15 +96,15 @@ scraping-platform/
 cp .env.example .env
 make up
 
-# API is available at http://localhost:8000
+# Web Dashboard at http://localhost:8000
+# API documentation at http://localhost:8000/docs
 # Grafana at http://localhost:3000 (admin/admin)
-# Swagger docs at http://localhost:8000/docs
 ```
 
 ### Option B — Local development
 
 ```bash
-# Prerequisites: Python 3.11+, PostgreSQL, Redis running locally
+# Prerequisites: Python 3.14+, PostgreSQL, Redis running locally
 
 # Install dependencies
 make dev
@@ -113,6 +123,8 @@ make api
 
 # Run a crawler
 make crawl SPIDER=products
+
+# Access the web dashboard at http://localhost:8000
 ```
 
 ## Running Crawlers
@@ -144,17 +156,48 @@ python -m infrastructure.workers.worker
 docker compose --profile crawl up crawler
 ```
 
+## Web Dashboard
+
+Access the interactive web dashboard at `http://localhost:8000`:
+
+- **Home** — View statistics, recent products/jobs, export to CSV/TSV/PSV
+- **Raw Scrape** — Run manual scrapes without database processing, save raw JSON to `data/raw/`
+- **Load to DB** — Load raw JSON files into PostgreSQL database
+
+Features:
+- Images displayed inline using URLs
+- Clickable hyperlinks for product/job URLs
+- Export buttons for CSV, TSV, PSV, HTML formats
+- Real-time scrape preview with table rendering
+
 ## API Endpoints
+
+### REST API (v1)
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/health` | Health check |
-| `GET` | `/products/` | List products (paginated, filterable) |
-| `GET` | `/products/{id}` | Get single product |
-| `GET` | `/jobs/` | List job listings (paginated, filterable) |
-| `GET` | `/jobs/{id}` | Get single job listing |
-| `GET` | `/analytics/` | Aggregate statistics |
+| `GET` | `/api/v1/products/` | List products (paginated, filterable) |
+| `GET` | `/api/v1/products/{id}` | Get single product |
+| `GET` | `/api/v1/jobs/` | List job listings (paginated, filterable) |
+| `GET` | `/api/v1/jobs/{id}` | Get single job listing |
+| `GET` | `/api/v1/analytics/` | Aggregate statistics |
+| `POST` | `/api/v1/raw-scrape` | Run manual scrape, return JSON |
+| `GET` | `/api/v1/raw-files` | List raw JSON files |
 | `GET` | `/metrics` | Prometheus metrics |
+
+### Export Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/export/products/{format}` | Export all products (csv/tsv/psv/html) |
+| `GET` | `/export/jobs/{format}` | Export all jobs (csv/tsv/psv/html) |
+| `GET` | `/export/raw/{filename}/{format}` | Export raw file (csv/tsv/psv/html) |
+| `POST` | `/export/load-to-db` | Load raw JSON to PostgreSQL |
+
+### Legacy Endpoints
+
+Legacy endpoints without `/api/v1` prefix are maintained for backwards compatibility.
 
 Full API docs with interactive Swagger UI at `/docs`.
 
