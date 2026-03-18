@@ -1,8 +1,8 @@
 # Scraping Platform
 
-A scalable, distributed web scraping platform for collecting public website data, processing it through ETL pipelines, storing it in PostgreSQL, and exposing it via a REST API.
+A scalable, distributed web scraping platform for collecting public website data, processing it through ETL pipelines, storing it in PostgreSQL, and exposing it via a REST API and interactive web dashboard.
 
-Built with **Python 3.11**, **Scrapy**, **FastAPI**, **Redis**, **PostgreSQL**, **Docker**, and **Prometheus/Grafana** monitoring.
+Built with **Python 3.14**, **Scrapy**, **FastAPI**, **Redis**, **PostgreSQL**, **Docker**, and **Prometheus/Grafana** monitoring.
 
 ## Architecture
 
