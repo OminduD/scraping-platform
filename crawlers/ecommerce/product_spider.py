@@ -34,11 +34,21 @@ class ProductSpider(BaseSpider):
         "DOWNLOAD_DELAY": 1.5,
     }
 
+    # Keep sitemap mode focused on product-related pages to avoid crawling the whole site.
+    sitemap_filter_patterns: list[str] = [
+        r"/product(?:/|$)",
+        r"/products?(?:/|$)",
+        r"/product-category(?:/|$)",
+        r"/shop(?:/|$)",
+        r"/catalog(?:/|$)",
+    ]
+
     def __init__(
         self,
         *args: Any,
         start_urls: list[str] | None = None,
         sitemap_urls: list[str] | None = None,
+        sitemap_filter_patterns: list[str] | str | None = None,
         download_images: bool | str = False,
         **kwargs: Any,
     ) -> None:
@@ -57,16 +67,25 @@ class ProductSpider(BaseSpider):
         if start_urls:
             self.start_urls = start_urls
 
+        if sitemap_filter_patterns:
+            if isinstance(sitemap_filter_patterns, str):
+                self.sitemap_filter_patterns = [sitemap_filter_patterns]
+            else:
+                self.sitemap_filter_patterns = list(sitemap_filter_patterns)
+
         super().__init__(*args, sitemap_urls=sitemap_urls, **kwargs)
 
     def parse(self, response: scrapy.http.Response, **kwargs) -> Generator:
         self._record_success(response.url)
 
         # Detect site type and delegate to the right parser
-        if response.css("ul.products li.product"):
-            yield from self._parse_woocommerce(response)
-        elif response.css("article.product_pod"):
+        if response.css("article.product_pod"):
             yield from self._parse_books_toscrape(response)
+        elif self._is_product_detail_page(response):
+            # Product pages can still contain related-products grids; parse the page itself first.
+            yield from self._parse_generic(response)
+        elif response.css("ul.products li.product"):
+            yield from self._parse_woocommerce(response)
         else:
             yield from self._parse_generic(response)
 
@@ -108,13 +127,8 @@ class ProductSpider(BaseSpider):
                 product.css("h2.woocommerce-loop-product__title::text").get("")
                 or product.css("h2::text").get("")
             ).strip()
-            # Prefer sale (ins) price, fall back to regular price
-            price = (
-                product.css(".price ins .woocommerce-Price-amount::text").get("")
-                or product.css(".price .woocommerce-Price-amount::text").get("")
-                or product.css(".price ins::text").get("")
-                or product.css(".price::text").get("")
-            ).strip()
+            # WooCommerce prices are often nested in bdi/span nodes.
+            price = self._extract_woocommerce_price(product)
             product_url = link.attrib.get("href", "") if link else ""
             image_url = (
                 product.css("img::attr(src)").get("")
@@ -139,6 +153,38 @@ class ProductSpider(BaseSpider):
         if next_page:
             self._record_start(response.urljoin(next_page))
             yield response.follow(next_page, callback=self.parse, errback=self._on_error)
+
+    def _is_product_detail_page(self, response: scrapy.http.Response) -> bool:
+        """Detect product detail pages that may also contain related product grids."""
+        path = urlparse(response.url).path.lower()
+        if "/product/" in path:
+            return True
+
+        return bool(
+            response.css(
+                "body.single-product, div.product.type-product, "
+                "form.cart, [itemtype*='schema.org/Product']"
+            )
+        )
+
+    def _extract_woocommerce_price(self, product: scrapy.Selector) -> str:
+        """Extract human-readable price text from WooCommerce list cards."""
+        price_texts = [
+            t.strip()
+            for t in product.css(".price *::text, .price::text").getall()
+            if t and t.strip()
+        ]
+        if price_texts:
+            return " ".join(price_texts)
+
+        return (
+            product.css(
+                ".price::attr(data-price), "
+                ".price [itemprop='price']::attr(content), "
+                "[itemprop='price']::attr(content)"
+            ).get("")
+            or ""
+        ).strip()
 
     # ── Generic parser (JSON-LD, Open Graph, HTML patterns) ───────────
 
@@ -241,13 +287,27 @@ class ProductSpider(BaseSpider):
 
     def _extract_price_from_page(self, response: scrapy.http.Response) -> str:
         """Try to find a price on the page using common patterns."""
-        # Common price selectors
-        price = (
-            response.css('.price::text, .product-price::text, [class*="price"]::text').get()
-            or response.css('[itemprop="price"]::attr(content)').get()
-            or ""
+        # Common price selectors (text can be split across nested nodes).
+        price_text = " ".join(
+            t.strip()
+            for t in response.css(
+                '.price *::text, .price::text, .product-price *::text, '
+                '.product-price::text, [class*="price"]::text'
+            ).getall()
+            if t and t.strip()
         )
-        # Clean up price - extract numbers
+        fallback = (
+            response.css(
+                'meta[property="product:price:amount"]::attr(content), '
+                'meta[property="og:price:amount"]::attr(content), '
+                '[itemprop="price"]::attr(content), '
+                '[class*="price"]::attr(data-price)'
+            ).get("")
+            or ""
+        ).strip()
+        price = price_text or fallback
+
+        # Clean up price - extract first numeric token.
         if price:
             match = re.search(r'[\d,.]+', price)
             if match:
