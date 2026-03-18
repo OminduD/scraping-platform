@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Raw Data Preview — Scraping Platform</title>
+<link rel="stylesheet" href="/static/css/style.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: #f8f9fa; }
+  .container { max-width: 1400px; margin: 2rem auto; padding: 0 2rem; }
+  .card { background: #fff; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); margin-bottom: 1.5rem; }
+  h1 { margin-bottom: 1rem; color: #212529; }
+  .meta { color: #6c757d; margin-bottom: 1rem; font-size: .9rem; }
+  .stats { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .stat-chip { background: #e7f5ff; padding: .5rem 1rem; border-radius: 6px; }
+  .stat-chip strong { display: block; color: #1971c2; font-size: .8rem; text-transform: uppercase; margin-bottom: .25rem; }
+  .stat-chip span { font-size: 1.5rem; font-weight: 700; color: #1864ab; }
+  .export-btns { margin-bottom: 1rem; }
+  .btn { display: inline-block; padding: .5rem 1rem; background: #0d6efd; color: #fff; text-decoration: none; border-radius: 4px; margin-right: .5rem; margin-bottom: .5rem; border: none; cursor: pointer; }
+  .btn:hover { background: #0b5ed7; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; background: #fff; }
+  th, td { padding: .6rem .8rem; text-align: left; border-bottom: 1px solid #dee2e6; font-size: .9rem; }
+  th { background: #343a40; color: #fff; position: sticky; top: 0; font-weight: 600; }
+  tr:hover { background: #f1f3f5; }
+  td { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  img.thumb { max-width: 60px; max-height: 60px; object-fit: cover; border-radius: 4px; }
+  .loading { text-align: center; padding: 2rem; color: #6c757d; }
+  .error { color: #b42318; padding: 1rem; background: #fee; border-radius: 4px; }
+  select { padding: .4rem; border: 1px solid #dee2e6; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Raw Data Preview</h1>
+
+  <div class="card">
+    <label for="file-select"><strong>Select File:</strong></label>
+    <select id="file-select" style="margin-top: .5rem; width: 100%; max-width: 500px;">
+      <option value="">-- Loading files --</option>
+    </select>
+  </div>
+
+  <div id="preview-section" style="display: none;">
+    <div class="card">
+      <h2 id="file-name">File Name</h2>
+      <div class="stats" id="stats"></div>
+    </div>
+
+    <div class="card">
+      <h3>Export Options</h3>
+      <div class="export-btns" id="export-btns"></div>
+    </div>
+
+    <div class="card">
+      <h3>Data Preview (first 20 records)</h3>
+      <div class="table-wrap" id="table-container">
+        <p class="loading">Select a file to preview</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/dashboard.js"></script>
+<script>
+  const fileSelect = document.getElementById('file-select');
+  const previewSection = document.getElementById('preview-section');
+  const fileName = document.getElementById('file-name');
+  const stats = document.getElementById('stats');
+  const exportBtns = document.getElementById('export-btns');
+  const tableContainer = document.getElementById('table-container');
+
+  // Load file list
+  async function loadFiles() {
+    try {
+      const res = await fetch('/api/v1/raw-files');
+      const data = await res.json();
+      const files = data.files || [];
+
+      if (files.length === 0) {
+        fileSelect.innerHTML = '<option value="">No raw files found</option>';
+        return;
+      }
+
+      fileSelect.innerHTML = '<option value="">-- Select a file --</option>';
+      for (const f of files) {
+        const option = document.createElement('option');
+        option.value = f.name;
+        option.textContent = `${f.name} (${(f.size / 1024).toFixed(1)} KB)`;
+        fileSelect.appendChild(option);
+      }
+    } catch (e) {
+      fileSelect.innerHTML = '<option value="">Error loading files</option>';
+      console.error('Error loading files:', e);
+    }
+  }
+
+  // Load and preview file
+  async function previewFile(filename) {
+    if (!filename) {
+      previewSection.style.display = 'none';
+      return;
+    }
+
+    previewSection.style.display = 'block';
+    fileName.textContent = filename;
+    stats.innerHTML = '<div class="loading">Loading...</div>';
+    exportBtns.innerHTML = '';
+    tableContainer.innerHTML = '<div class="loading">Loading data...</div>';
+
+    try {
+      // Fetch the JSON file directly
+      const res = await fetch(`/export/raw/${encodeURIComponent(filename)}/csv`);
+      if (!res.ok) {
+        // Try fetching directly from data/raw
+        const jsonRes = await fetch(`/data/raw/${encodeURIComponent(filename)}`);
+        if (!jsonRes.ok) {
+          throw new Error('Failed to load file');
+        }
+        const jsonData = await jsonRes.json();
+        displayData(filename, jsonData);
+      } else {
+        // If CSV export works, fetch JSON through a trick - we'll use the API method
+        // Actually, let's try the API endpoint
+        const apiRes = await fetch(`/export/raw-file-preview?filename=${encodeURIComponent(filename)}&limit=20`);
+        const apiData = await apiRes.json();
+
+        if (apiData.ok && apiData.items) {
+          displayData(filename, apiData.items, apiData.total);
+        } else {
+          throw new Error(apiData.error || 'Failed to load preview');
+        }
+      }
+    } catch (e) {
+      stats.innerHTML = '';
+      tableContainer.innerHTML = `<div class="error">Error: ${escapeHtml(e.message)}</div>`;
+      console.error('Error loading preview:', e);
+    }
+  }
+
+  function displayData(filename, items, total) {
+    const itemCount = Array.isArray(items) ? items.length : 0;
+    const totalCount = total ||itemCount;
+    const columns = collectRawTableColumns(items);
+
+    // Display stats
+    stats.innerHTML = `
+      <div class="stat-chip"><strong>Total Records</strong><span>${totalCount}</span></div>
+      <div class="stat-chip"><strong>Showing</strong><span>${itemCount}</span></div>
+      <div class="stat-chip"><strong>Columns</strong><span>${columns.length}</span></div>
+    `;
+
+    // Display export buttons
+    exportBtns.innerHTML = `
+      <a href="/export/raw/${encodeURIComponent(filename)}/csv" class="btn">Download CSV</a>
+      <a href="/export/raw/${encodeURIComponent(filename)}/tsv" class="btn">Download TSV</a>
+      <a href="/export/raw/${encodeURIComponent(filename)}/psv" class="btn">Download PSV</a>
+      <a href="/export/raw/${encodeURIComponent(filename)}/html" class="btn">Download HTML</a>
+    `;
+
+    // Display table
+    tableContainer.innerHTML = renderRawDataTable(items);
+  }
+
+  // Event listener
+  fileSelect.addEventListener('change', (e) => {
+    previewFile(e.target.value);
+  });
+
+  // Load files on page load
+  loadFiles();
+</script>
+</body>
+</html>
