@@ -122,7 +122,10 @@ make crawl SPIDER=products
 ```bash
 python -m scripts.run_spider products
 python -m scripts.run_spider jobs
+python -m scripts.run_spider products --download-images
 ```
+
+By default, crawlers store the product `image_url` only. Use `--download-images` when you also want to download image files.
 
 ### Via worker queue
 
