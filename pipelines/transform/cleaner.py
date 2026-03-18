@@ -26,10 +26,10 @@ class TransformPipeline:
         pipeline.crawler = crawler
         return pipeline
 
-    def open_spider(self) -> None:
+    def open_spider(self, spider) -> None:
         _seen_urls.clear()
 
-    def process_item(self, item: dict[str, Any]) -> dict[str, Any]:
+    def process_item(self, item: dict[str, Any], spider) -> dict[str, Any]:
         url = item.get("url", "")
 
         # ── Deduplication ────────────────────────────────────────────
@@ -56,7 +56,7 @@ class TransformPipeline:
         item.pop("image_urls", None)
         item.pop("images", None)
 
-        logger.debug("transform.done", spider=self.crawler.spider.name, url=url)
+        logger.debug("transform.done", spider=spider.name, url=url)
         return item
 
 
