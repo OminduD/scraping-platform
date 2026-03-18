@@ -3,180 +3,334 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Dashboard - Scraping Platform</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <title>Scraping Dashboard</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --bg: #f3f4f6;
+      --card-bg: #ffffff;
+      --text: #1f2937;
+      --text-muted: #6b7280;
+      --border: #e5e7eb;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    }
+    /* Layout */
+    .app { display: flex; min-height: 100vh; }
+    .sidebar { width: 260px; background: #111827; color: #fff; display: flex; flex-direction: column; }
+    .brand { padding: 20px; font-size: 1.2rem; font-weight: bold; border-bottom: 1px solid #374151; }
+    .nav { padding: 10px; flex: 1; }
+    .nav-btn {
+      display: block; width: 100%; border: none; background: transparent; color: #d1d5db;
+      text-align: left; padding: 12px 15px; margin-bottom: 5px; border-radius: 6px;
+      font-size: 1rem; cursor: pointer; transition: 0.2s;
+    }
+    .nav-btn:hover { background: #374151; color: #fff; }
+    .nav-btn.active { background: var(--primary); color: #fff; }
+    .content { flex: 1; padding: 30px; max-height: 100vh; overflow-y: auto; }
+    
+    /* Views */
+    .view { display: none; }
+    .view.active { display: block; }
+    
+    /* Cards */
+    .card { background: var(--card-bg); border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    h2 { margin-top: 0; margin-bottom: 15px; font-size: 1.25rem; }
+    
+    /* Buttons */
+    .btn { background: var(--primary); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; text-decoration: none; display: inline-block; font-size: 0.9rem; }
+    .btn:hover { background: #1d4ed8; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .btn-outline:hover { background: var(--bg); }
+    
+    /* Table */
+    .table-resp { overflow-x: auto; max-width: 100%; }
+    table { width: 100%; min-width: 600px; border-collapse: collapse; text-align: left; }
+    th { background: #f9fafb; padding: 12px; font-weight: 500; color: var(--text-muted); border-bottom: 1px solid var(--border); position: sticky; top: 0; }
+    td { padding: 12px; border-bottom: 1px solid var(--border); }
+    tr:hover td { background: #f9fafb; }
+    
+    /* Data Preview Specific */
+    .preview-controls { display: flex; gap: 15px; align-items: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+    select { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; min-width: 250px; font-size: 1rem; }
+    
+    .stats-row { display: flex; gap: 20px; margin-bottom: 20px; }
+    .stat { background: #fbfbfb; padding: 15px; border-radius: 6px; border: 1px solid var(--border); flex: 1; }
+    .stat-title { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 5px; }
+    .stat-val { font-size: 1.5rem; font-weight: bold; }
+    
+    td img { max-height: 50px; border-radius: 4px; }
+    .td-truncate { max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  </style>
 </head>
 <body>
-  <nav>
-    <a class="brand" href="/static/index.html">Scraping Platform</a>
-    <a href="/static/index.html" class="active">Home</a>
-    <a href="/static/raw-scrape.html">Raw Scrape</a>
-    <a href="/static/load-to-db.html">Load to DB</a>
-  </nav>
 
-  <div class="container">
-    <h1>Dashboard</h1>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">Scraping Platform</div>
+    <nav class="nav">
+      <button class="nav-btn active" onclick="showTab('tab-dashboard', this)">Dashboard</button>
+      <button class="nav-btn" onclick="showTab('tab-preview', this)" id="nav-preview-btn">Data Preview</button>
+      <div style="margin-top: 20px; border-top: 1px solid #374151; padding-top: 20px;">
+        <a href="/static/raw-scrape.html" class="nav-btn" style="text-decoration:none;">Raw Scrape Form</a>
+        <a href="/static/load-to-db.html" class="nav-btn" style="text-decoration:none;">Load to DB Form</a>
+      </div>
+    </nav>
+  </aside>
 
-    <div class="card-grid" id="stats">
+  <!-- Main Content -->
+  <main class="content">
+    
+    <!-- DASHBOARD TAB -->
+    <div id="tab-dashboard" class="view active">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+        <h1 style="margin:0;">Dashboard Overview</h1>
+        <button class="btn" onclick="loadDashboard()">↻ Refresh</button>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat">
+          <div class="stat-title">Products in DB</div>
+          <div class="stat-val" id="db-products">-</div>
+          <div style="margin-top:10px;">
+            <a href="/export/products/csv" class="btn btn-outline" style="padding:4px 8px; font-size:0.8rem;">Export CSV</a>
+          </div>
+        </div>
+        <div class="stat">
+          <div class="stat-title">Jobs in DB</div>
+          <div class="stat-val" id="db-jobs">-</div>
+          <div style="margin-top:10px;">
+            <a href="/export/jobs/csv" class="btn btn-outline" style="padding:4px 8px; font-size:0.8rem;">Export CSV</a>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
-        <h2>Total Products</h2>
-        <div class="stat" id="product-count">-</div>
-        <div class="export-btns">
-          <a href="/export/products/csv" class="btn">CSV</a>
-          <a href="/export/products/tsv" class="btn">TSV</a>
-          <a href="/export/products/psv" class="btn">PSV</a>
-          <a href="/export/products/html" class="btn">HTML</a>
+        <h2>Latest Raw Exports (data/raw)</h2>
+        <div class="table-resp">
+          <table id="raw-table">
+            <thead>
+              <tr><th>Filename</th><th>Size</th><th>Date</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="4" align="center">Loading...</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
+    </div>
+
+    <!-- PREVIEW TAB -->
+    <div id="tab-preview" class="view">
+      <h1 style="margin-top:0; margin-bottom:20px;">Data Preview Explorer</h1>
+      
       <div class="card">
-        <h2>Total Jobs</h2>
-        <div class="stat" id="job-count">-</div>
-        <div class="export-btns">
-          <a href="/export/jobs/csv" class="btn">CSV</a>
-          <a href="/export/jobs/tsv" class="btn">TSV</a>
-          <a href="/export/jobs/psv" class="btn">PSV</a>
-          <a href="/export/jobs/html" class="btn">HTML</a>
+        <div class="preview-controls">
+          <label style="font-weight:bold;">Select File:</label>
+          <select id="preview-select">
+            <option value="">-- Loading files --</option>
+          </select>
+          <a href="#" id="preview-export-csv" class="btn btn-outline" style="display:none;" target="_blank">Download CSV</a>
+        </div>
+        
+        <div id="preview-msg" style="text-align:center; padding: 40px; color: var(--text-muted);">
+          Please select a file to preview its data contents.
+        </div>
+        
+        <div id="preview-workspace" style="display:none;">
+          <div class="stats-row" style="margin-bottom: 15px;">
+            <div class="stat"><div class="stat-title">Total Records</div><div class="stat-val" id="pv-total">0</div></div>
+            <div class="stat"><div class="stat-title">Records Shown</div><div class="stat-val" id="pv-shown">0</div></div>
+            <div class="stat"><div class="stat-title">File Detected</div><div class="stat-val" id="pv-type" style="text-transform: capitalize;">-</div></div>
+          </div>
+          
+          <div class="table-resp" style="max-height: 60vh;">
+            <table id="pv-datatable">
+              <thead id="pv-head"></thead>
+              <tbody id="pv-body"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
+    
+  </main>
+</div>
 
-    <div class="card" style="margin-top: 1.5rem;">
-      <h2>Raw Data Files</h2>
-      <p class="meta">JSON files in data/raw (scraped without DB processing)</p>
-      <div id="raw-files-list" class="loading">Loading...</div>
-    </div>
-
-    <div id="raw-preview-modal" class="modal" style="display: none;">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2 id="preview-modal-title">Preview</h2>
-          <button class="modal-close" onclick="closePreviewModal()">&times;</button>
-        </div>
-        <p class="meta" id="preview-modal-meta"></p>
-        <div id="preview-modal-body" class="modal-body"></div>
-      </div>
-    </div>
-
-    <div class="card" style="margin-top: 1.5rem;">
-      <h2>Recent Products (from DB)</h2>
-      <div id="products-table" class="loading">Loading...</div>
-    </div>
-
-    <div class="card" style="margin-top: 1.5rem;">
-      <h2>Recent Jobs (from DB)</h2>
-      <div id="jobs-table" class="loading">Loading...</div>
-    </div>
-  </div>
-
-  <script src="/static/js/dashboard.js"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      loadStats();
-      loadRawFiles();
-      loadProducts();
-      loadJobs();
-    });
-
-    async function loadStats() {
-      try {
-        const res = await fetch('/api/v1/analytics');
-        const data = await res.json();
-        document.getElementById('product-count').textContent = data.products_count || 0;
-        document.getElementById('job-count').textContent = data.jobs_count || 0;
-      } catch (e) {
-        console.error('Failed to load stats:', e);
-        document.getElementById('product-count').textContent = '0';
-        document.getElementById('job-count').textContent = '0';
-      }
+<script>
+  /* Navigation */
+  function showTab(tabId, btnContext) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    
+    if (btnContext) {
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      btnContext.classList.add('active');
     }
+  }
+  
+  function jumpToPreview(filename) {
+    // Switch UI
+    showTab('tab-preview', document.getElementById('nav-preview-btn'));
+    // Select dropdown & trigger load
+    const sel = document.getElementById('preview-select');
+    sel.value = filename;
+    loadPreviewData(filename);
+  }
 
-    async function loadRawFiles() {
-      try {
-        const res = await fetch('/api/v1/raw-files');
-        const data = await res.json();
-        const files = data.files || [];
-
-        if (files.length === 0) {
-          document.getElementById('raw-files-list').innerHTML = '<p class="meta">No raw files found. Use "Raw Scrape" to create some.</p>';
-          return;
-        }
-
-        let html = '<table><thead><tr><th>File</th><th>Size</th><th>Modified</th><th>Actions</th></tr></thead><tbody>';
-        for (const f of files) {
-          const sizeKb = (f.size / 1024).toFixed(1);
-          const modified = new Date(f.modified).toLocaleString();
-          html += `<tr>
-            <td>${escapeHtml(f.name)}</td>
-            <td>${sizeKb} KB</td>
-            <td>${modified}</td>
-            <td>
-              <button class="btn" onclick="loadPreview('${escapeHtml(f.name)}')">Preview</button>
-              <a href="/export/raw/${encodeURIComponent(f.name)}/csv" class="btn">CSV</a>
-              <a href="/export/raw/${encodeURIComponent(f.name)}/json" class="btn">JSON</a>
-            </td>
-          </tr>`;
-        }
-        html += '</tbody></table>';
-        document.getElementById('raw-files-list').innerHTML = html;
-      } catch (e) {
-        document.getElementById('raw-files-list').innerHTML = '<p class="error">Failed to load raw files</p>';
-      }
-    }
-
-    async function loadPreview(filename) {
-      try {
-        const res = await fetch(`/export/raw/${encodeURIComponent(filename)}/preview?limit=20`);
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.detail || 'Failed to load preview');
-        }
-
-        const total = Number.isFinite(data.total) ? data.total : (Array.isArray(data.items) ? data.items.length : 0);
-        const previewCount = Number.isFinite(data.preview_count) ? data.preview_count : (Array.isArray(data.items) ? data.items.length : 0);
-
-        document.getElementById('preview-modal-title').textContent = `Preview: ${filename}`;
-        document.getElementById('preview-modal-meta').textContent = `Showing ${previewCount} of ${total} items`;
-        document.getElementById('preview-modal-body').innerHTML = renderRawDataTable(data.items || []);
-        document.getElementById('raw-preview-modal').style.display = 'flex';
-      } catch (e) {
-        document.getElementById('preview-modal-title').textContent = `Preview: ${filename}`;
-        document.getElementById('preview-modal-meta').textContent = 'Preview unavailable';
-        document.getElementById('preview-modal-body').innerHTML = `<p class="meta">${escapeHtml(e.message)}</p>`;
-        document.getElementById('raw-preview-modal').style.display = 'flex';
-      }
-    }
-
-    function closePreviewModal() {
-      document.getElementById('raw-preview-modal').style.display = 'none';
-    }
-
-    // Close modal on outside click
-    document.getElementById('raw-preview-modal')?.addEventListener('click', (e) => {
-      if (e.target.id === 'raw-preview-modal') {
-        closePreviewModal();
+  /* Initialization */
+  document.addEventListener('DOMContentLoaded', () => {
+    loadDashboard();
+    
+    document.getElementById('preview-select').addEventListener('change', (e) => {
+      const fn = e.target.value;
+      if(fn) loadPreviewData(fn);
+      else {
+        document.getElementById('preview-workspace').style.display = 'none';
+        document.getElementById('preview-export-csv').style.display = 'none';
+        document.getElementById('preview-msg').style.display = 'block';
+        document.getElementById('preview-msg').textContent = 'Please select a file to preview.';
       }
     });
+  });
 
-    async function loadProducts() {
-      try {
-        const res = await fetch('/api/v1/products?limit=10');
-        const data = await res.json();
-        document.getElementById('products-table').innerHTML = renderProductsTable(data.items || []);
-      } catch (e) {
-        document.getElementById('products-table').innerHTML = '<p class="meta">No database connection or no products in DB</p>';
-      }
-    }
+  /* Fetch and render Dashboard */
+  async function loadDashboard() {
+    // 1. Fetch Analytics for DB
+    try {
+      const res = await fetch('/api/v1/analytics');
+      const data = await res.json();
+      document.getElementById('db-products').innerText = data.products_count || 0;
+      document.getElementById('db-jobs').innerText = data.jobs_count || 0;
+    } catch(e) { console.error('Analytics err', e); }
 
-    async function loadJobs() {
-      try {
-        const res = await fetch('/api/v1/jobs?limit=10');
-        const data = await res.json();
-        document.getElementById('jobs-table').innerHTML = renderJobsTable(data.items || []);
-      } catch (e) {
-        document.getElementById('jobs-table').innerHTML = '<p class="meta">No database connection or no jobs in DB</p>';
+    // 2. Fetch Raw Files
+    const tb = document.querySelector('#raw-table tbody');
+    const select = document.getElementById('preview-select');
+    try {
+      tb.innerHTML = '<tr><td colspan="4" align="center">Loading files...</td></tr>';
+      
+      const res = await fetch('/api/v1/raw-files');
+      const data = await res.json();
+      const files = data.files || [];
+      
+      if(files.length === 0) {
+        tb.innerHTML = '<tr><td colspan="4" align="center">No files found in data/raw/</td></tr>';
+        select.innerHTML = '<option value="">No files available</option>';
+        return;
       }
+      
+      // Populate Table
+      tb.innerHTML = '';
+      select.innerHTML = '<option value="">-- Select a file --</option>';
+      
+      files.forEach(f => {
+        const size = (f.size / 1024).toFixed(1) + ' KB';
+        const date = new Date(f.modified).toLocaleString();
+        
+        tb.innerHTML += `
+          <tr>
+            <td><strong>${f.name}</strong></td>
+            <td>${size}</td>
+            <td>${date}</td>
+            <td><button class="btn" onclick="jumpToPreview('${f.name}')">Preview</button></td>
+          </tr>
+        `;
+        
+        select.innerHTML += `<option value="${f.name}">${f.name} (${size})</option>`;
+      });
+      
+    } catch(e) {
+      tb.innerHTML = `<tr><td colspan="4" style="color:red" align="center">Error loading files: ${e.message}</td></tr>`;
     }
-  </script>
+  }
+
+  /* Fetch and render Data Preview */
+  async function loadPreviewData(filename) {
+    document.getElementById('preview-msg').style.display = 'block';
+    document.getElementById('preview-msg').textContent = 'Loading data...';
+    document.getElementById('preview-workspace').style.display = 'none';
+    
+    // Update CSV Export link
+    const csvBtn = document.getElementById('preview-export-csv');
+    csvBtn.style.display = 'inline-block';
+    csvBtn.href = `/export/raw/${encodeURIComponent(filename)}/csv`;
+    
+    try {
+      const res = await fetch(`/api/v1/raw-file-preview?filename=${encodeURIComponent(filename)}&limit=50`);
+      const payload = await res.json();
+      
+      if(!payload.ok) throw new Error(payload.error || "Failed to parse JSON");
+      
+      document.getElementById('preview-msg').style.display = 'none';
+      document.getElementById('preview-workspace').style.display = 'block';
+      
+      document.getElementById('pv-total').innerText = payload.total || 0;
+      document.getElementById('pv-shown').innerText = payload.preview_count || 0;
+      document.getElementById('pv-type').innerText = filename.includes('job') ? 'Jobs' : 'Products';
+      
+      buildTable(payload.items || []);
+      
+    } catch(err) {
+      document.getElementById('preview-msg').style.display = 'block';
+      document.getElementById('preview-msg').innerHTML = `<span style="color:red;">Error: ${err.message}</span>`;
+      document.getElementById('preview-workspace').style.display = 'none';
+    }
+  }
+
+  function buildTable(rows) {
+    const head = document.getElementById('pv-head');
+    const body = document.getElementById('pv-body');
+    head.innerHTML = ''; body.innerHTML = '';
+    
+    if(!rows.length) {
+      body.innerHTML = '<tr><td align="center">No data records found.</td></tr>';
+      return;
+    }
+    
+    // Gather all keys
+    const keys = new Set();
+    rows.forEach(r => Object.keys(r).forEach(k => keys.add(k)));
+    
+    // Ordered columns (Prioritize important columns on the left)
+    const order = ['title', 'name', 'price', 'url', 'image_url', 'company', 'location'];
+    const cols = [];
+    order.forEach(k => { if(keys.has(k)) { cols.push(k); keys.delete(k); } });
+    Array.from(keys).sort().forEach(k => cols.push(k));
+    
+    // Render Head
+    head.innerHTML = '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
+    
+    // Render Body
+    body.innerHTML = rows.map(r => {
+      return '<tr>' + cols.map(c => {
+        const val = r[c];
+        if(val == null || val === '') return '<td><em style="color:#aaa;">null</em></td>';
+        
+        // Handle images
+        if(typeof val === 'string' && val.startsWith('http') && (c.includes('image') || c.includes('logo') || val.match(/\.(jpeg|jpg|gif|png|webp|svg)$/i))) {
+          return `<td><img src="${val}" alt="img" onerror="this.style.display='none'"></td>`;
+        }
+        
+        // Handle links
+        if(typeof val === 'string' && val.startsWith('http')) {
+          return `<td><div class="td-truncate"><a href="${val}" target="_blank" title="${val}">${val}</a></div></td>`;
+        }
+        
+        // Object rendering
+        if(typeof val === 'object') {
+          const str = JSON.stringify(val);
+          return `<td><div class="td-truncate" title='${str.replace(/'/g,"&apos;")}'>{} object</div></td>`;
+        }
+        
+        // String rendering
+        return `<td><div class="td-truncate" title="${String(val).replace(/"/g,"&quot;")}">${val}</div></td>`;
+      }).join('') + '</tr>';
+    }).join('');
+  }
+</script>
 </body>
 </html>
