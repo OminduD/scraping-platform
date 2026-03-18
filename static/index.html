@@ -41,12 +41,18 @@
     </div>
 
     <div class="card" style="margin-top: 1.5rem;">
-      <h2>Recent Products</h2>
+      <h2>Raw Data Files</h2>
+      <p class="meta">JSON files in data/raw (scraped without DB processing)</p>
+      <div id="raw-files-list" class="loading">Loading...</div>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+      <h2>Recent Products (from DB)</h2>
       <div id="products-table" class="loading">Loading...</div>
     </div>
 
     <div class="card" style="margin-top: 1.5rem;">
-      <h2>Recent Jobs</h2>
+      <h2>Recent Jobs (from DB)</h2>
       <div id="jobs-table" class="loading">Loading...</div>
     </div>
   </div>
@@ -55,6 +61,7 @@
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       loadStats();
+      loadRawFiles();
       loadProducts();
       loadJobs();
     });
@@ -67,6 +74,40 @@
         document.getElementById('job-count').textContent = data.jobs_count || 0;
       } catch (e) {
         console.error('Failed to load stats:', e);
+        document.getElementById('product-count').textContent = '0';
+        document.getElementById('job-count').textContent = '0';
+      }
+    }
+
+    async function loadRawFiles() {
+      try {
+        const res = await fetch('/api/v1/raw-files');
+        const data = await res.json();
+        const files = data.files || [];
+
+        if (files.length === 0) {
+          document.getElementById('raw-files-list').innerHTML = '<p class="meta">No raw files found. Use "Raw Scrape" to create some.</p>';
+          return;
+        }
+
+        let html = '<table><thead><tr><th>File</th><th>Size</th><th>Modified</th><th>Actions</th></tr></thead><tbody>';
+        for (const f of files) {
+          const sizeKb = (f.size / 1024).toFixed(1);
+          const modified = new Date(f.modified).toLocaleString();
+          html += `<tr>
+            <td>${escapeHtml(f.name)}</td>
+            <td>${sizeKb} KB</td>
+            <td>${modified}</td>
+            <td>
+              <a href="/export/raw/${encodeURIComponent(f.name)}/csv" class="btn">CSV</a>
+              <a href="/export/raw/${encodeURIComponent(f.name)}/json" class="btn">JSON</a>
+            </td>
+          </tr>`;
+        }
+        html += '</tbody></table>';
+        document.getElementById('raw-files-list').innerHTML = html;
+      } catch (e) {
+        document.getElementById('raw-files-list').innerHTML = '<p class="error">Failed to load raw files</p>';
       }
     }
 
@@ -76,7 +117,7 @@
         const data = await res.json();
         document.getElementById('products-table').innerHTML = renderProductsTable(data.items || []);
       } catch (e) {
-        document.getElementById('products-table').innerHTML = '<p class="error">Failed to load products</p>';
+        document.getElementById('products-table').innerHTML = '<p class="meta">No database connection or no products in DB</p>';
       }
     }
 
@@ -86,7 +127,7 @@
         const data = await res.json();
         document.getElementById('jobs-table').innerHTML = renderJobsTable(data.items || []);
       } catch (e) {
-        document.getElementById('jobs-table').innerHTML = '<p class="error">Failed to load jobs</p>';
+        document.getElementById('jobs-table').innerHTML = '<p class="meta">No database connection or no jobs in DB</p>';
       }
     }
   </script>
