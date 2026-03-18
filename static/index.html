@@ -134,6 +134,8 @@
             <option value="">-- Loading files --</option>
           </select>
           <a href="#" id="preview-export-csv" class="btn btn-outline" style="display:none;" target="_blank">Download CSV</a>
+          <a href="#" id="preview-export-tsv" class="btn btn-outline" style="display:none;" target="_blank">Download TSV</a>
+          <a href="#" id="preview-export-psv" class="btn btn-outline" style="display:none;" target="_blank">Download PSV</a>
         </div>
         
         <div id="preview-msg" style="text-align:center; padding: 40px; color: var(--text-muted);">
@@ -152,6 +154,10 @@
               <thead id="pv-head"></thead>
               <tbody id="pv-body"></tbody>
             </table>
+          </div>
+          
+          <div id="pv-pagination" style="margin-top: 20px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
+            <!-- Pagination buttons -->
           </div>
         </div>
       </div>
@@ -249,18 +255,26 @@
   }
 
   /* Fetch and render Data Preview */
-  async function loadPreviewData(filename) {
+  async function loadPreviewData(filename, page = 1) {
     document.getElementById('preview-msg').style.display = 'block';
     document.getElementById('preview-msg').textContent = 'Loading data...';
     document.getElementById('preview-workspace').style.display = 'none';
     
-    // Update CSV Export link
+    // Update Export links
     const csvBtn = document.getElementById('preview-export-csv');
     csvBtn.style.display = 'inline-block';
     csvBtn.href = `/export/raw/${encodeURIComponent(filename)}/csv`;
     
+    const tsvBtn = document.getElementById('preview-export-tsv');
+    tsvBtn.style.display = 'inline-block';
+    tsvBtn.href = `/export/raw/${encodeURIComponent(filename)}/tsv`;
+    
+    const psvBtn = document.getElementById('preview-export-psv');
+    psvBtn.style.display = 'inline-block';
+    psvBtn.href = `/export/raw/${encodeURIComponent(filename)}/psv`;
+    
     try {
-      const res = await fetch(`/api/v1/raw-file-preview?filename=${encodeURIComponent(filename)}&limit=50`);
+      const res = await fetch(`/api/v1/raw-file-preview?filename=${encodeURIComponent(filename)}&page=${page}&limit=50`);
       const payload = await res.json();
       
       if(!payload.ok) throw new Error(payload.error || "Failed to parse JSON");
@@ -269,16 +283,59 @@
       document.getElementById('preview-workspace').style.display = 'block';
       
       document.getElementById('pv-total').innerText = payload.total || 0;
-      document.getElementById('pv-shown').innerText = payload.preview_count || 0;
+      document.getElementById('pv-shown').innerText = (payload.page - 1) * payload.limit + payload.items.length || 0;
       document.getElementById('pv-type').innerText = filename.includes('job') ? 'Jobs' : 'Products';
       
       buildTable(payload.items || []);
+      buildPagination(filename, payload.page, payload.total, payload.limit);
       
     } catch(err) {
       document.getElementById('preview-msg').style.display = 'block';
       document.getElementById('preview-msg').innerHTML = `<span style="color:red;">Error: ${err.message}</span>`;
       document.getElementById('preview-workspace').style.display = 'none';
     }
+  }
+
+  function buildPagination(filename, currentPage, totalItems, limit) {
+    const paginationEl = document.getElementById('pv-pagination');
+    paginationEl.innerHTML = '';
+    
+    const totalPages = Math.ceil(totalItems / limit);
+    if (totalPages <= 1) return;
+    
+    let html = '';
+    
+    if (currentPage > 1) {
+      html += `<button class="btn btn-outline" style="padding: 4px 10px;" onclick="loadPreviewData('${filename}', ${currentPage - 1})">&laquo; Prev</button>`;
+    }
+    
+    // Show a reasonable number of pages, not all of them if there are too many
+    let startPage = Math.max(1, currentPage - 5);
+    let endPage = Math.min(totalPages, currentPage + 5);
+    
+    if (startPage > 1) {
+      html += `<button class="btn btn-outline" style="padding: 4px 10px;" onclick="loadPreviewData('${filename}', 1)">1</button>`;
+      if (startPage > 2) html += `<span style="padding: 4px 10px;">...</span>`;
+    }
+    
+    for (let p = startPage; p <= endPage; p++) {
+      if (p === currentPage) {
+        html += `<button class="btn" style="padding: 4px 10px;">${p}</button>`;
+      } else {
+        html += `<button class="btn btn-outline" style="padding: 4px 10px;" onclick="loadPreviewData('${filename}', ${p})">${p}</button>`;
+      }
+    }
+    
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) html += `<span style="padding: 4px 10px;">...</span>`;
+      html += `<button class="btn btn-outline" style="padding: 4px 10px;" onclick="loadPreviewData('${filename}', ${totalPages})">${totalPages}</button>`;
+    }
+    
+    if (currentPage < totalPages) {
+      html += `<button class="btn btn-outline" style="padding: 4px 10px;" onclick="loadPreviewData('${filename}', ${currentPage + 1})">Next &raquo;</button>`;
+    }
+    
+    paginationEl.innerHTML = html;
   }
 
   function buildTable(rows) {
