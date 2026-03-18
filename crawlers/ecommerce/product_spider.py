@@ -38,7 +38,18 @@ class ProductSpider(BaseSpider):
         },
     }
 
-    def __init__(self, *args: Any, start_urls: list[str] | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        start_urls: list[str] | None = None,
+        download_images: bool | str = False,
+        **kwargs: Any,
+    ) -> None:
+        if isinstance(download_images, str):
+            self.download_images = download_images.lower() in {"1", "true", "yes", "on"}
+        else:
+            self.download_images = bool(download_images)
+
         if start_urls:
             self.start_urls = start_urls
             # Derive allowed_domains from the provided URLs
@@ -68,11 +79,12 @@ class ProductSpider(BaseSpider):
                 "price": product.css("p.price_color::text").get("").strip(),
                 "url": response.urljoin(product.css("h3 a::attr(href)").get("")),
                 "image_url": image_url,
-                "image_urls": [image_url] if image_url else [],
                 "availability": product.css("p.availability::text").re_first(r"\S+"),
                 "rating": product.css("p.star-rating::attr(class)").re_first(r"star-rating (\w+)"),
                 "source": "books.toscrape.com",
             }
+            if self.download_images and image_url:
+                item["image_urls"] = [image_url]
             self._record_item("product")
             logger.debug("item.scraped", spider=self.name, title=item["title"])
             yield item
@@ -111,9 +123,10 @@ class ProductSpider(BaseSpider):
                 "price": price,
                 "url": response.urljoin(product_url),
                 "image_url": image_url,
-                "image_urls": [image_url] if image_url else [],
                 "source": domain,
             }
+            if self.download_images and image_url:
+                item["image_urls"] = [image_url]
             self._record_item("product")
             logger.debug("item.scraped", spider=self.name, title=item["title"])
             yield item
