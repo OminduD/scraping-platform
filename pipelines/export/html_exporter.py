@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 from html import escape
 
@@ -14,6 +16,7 @@ OUTPUT_DIR = Path("data/processed")
 SPIDER_OUTPUT_FILES = {
     "products": "products.html",
     "jobs": "jobs.html",
+    "anix": "anix_products.html",
 }
 
 
@@ -29,12 +32,12 @@ class HtmlExportPipeline:
         pipeline.crawler = crawler
         return pipeline
 
-    def process_item(self, item):
+    def process_item(self, item, spider):
         self.items.append(dict(item))
         return item
 
-    def close_spider(self) -> None:
-        spider_name = self.crawler.spider.name
+    def close_spider(self, spider) -> None:
+        spider_name = spider.name
         filename = SPIDER_OUTPUT_FILES.get(spider_name)
         if not filename:
             logger.warning("html_export.unknown_spider", spider=spider_name)
@@ -88,3 +91,17 @@ class HtmlExportPipeline:
 
         path.write_text(html, encoding="utf-8")
         logger.info("html_export.done", spider=spider_name, path=str(path), count=len(self.items))
+
+        # Always open the HTML report in the default browser
+        abs_path = path.resolve().as_uri()
+        try:
+            if sys.platform == "linux":
+                subprocess.Popen(["xdg-open", abs_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", abs_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                import webbrowser
+                webbrowser.open(abs_path)
+            logger.info("html_export.opened", path=abs_path)
+        except Exception as exc:
+            logger.warning("html_export.open_failed", error=str(exc))
