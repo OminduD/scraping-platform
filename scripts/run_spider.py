@@ -24,7 +24,6 @@ from scrapy.utils.project import get_project_settings
 
 SPIDERS = {
     "products": "crawlers.ecommerce.product_spider.ProductSpider",
-    "anix": "crawlers.ecommerce.anix_spider.AnixSpider",
     "jobs": "crawlers.jobs.job_spider.JobSpider",
 }
 
