@@ -502,3 +502,15 @@ def export_raw_html(filename: str):
         media_type="text/html",
         headers={"Content-Disposition": f"attachment; filename={html_filename}"},
     )
+
+
+@router.get("/raw/{filename}/json")
+def export_raw_json(filename: str):
+    """Download raw JSON file as-is."""
+    rows = _load_raw_json(filename)
+    content = json.dumps(rows, default=str, ensure_ascii=False, indent=2)
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
