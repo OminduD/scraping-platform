@@ -7,6 +7,7 @@ Usage:
     python -m scripts.run_spider products --urls https://a.com https://b.com
     python -m scripts.run_spider products --url-file configs/urls.txt
     python -m scripts.run_spider products --sitemap https://example.com/sitemap.xml
+    python -m scripts.run_spider products --download-images
 
 Priority: --url/--urls > --url-file > spider default start_urls
 Sitemap: --sitemap can be combined with any spider to discover URLs from a sitemap.
@@ -59,6 +60,15 @@ def main() -> None:
         help="Discover URLs from sitemap(s) instead of using start_urls. "
              "Works with any spider. Example: --sitemap https://example.com/sitemap.xml",
     )
+    parser.add_argument(
+        "--output-json",
+        help="Write raw scraped items to this JSON file (overrides spider FEEDS).",
+    )
+    parser.add_argument(
+        "--download-images",
+        action="store_true",
+        help="Download product images to IMAGES_STORE. By default only image URLs are saved.",
+    )
 
     args = parser.parse_args()
 
@@ -69,6 +79,22 @@ def main() -> None:
 
     settings = get_project_settings()
     settings.setmodule("crawlers.settings")
+
+    if args.output_json:
+        output_path = Path(args.output_json)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        settings.set(
+            "FEEDS",
+            {
+                str(output_path): {
+                    "format": "json",
+                    "encoding": "utf-8",
+                    "overwrite": True,
+                }
+            },
+            priority="cmdline",
+        )
+
     process = CrawlerProcess(settings)
 
     kwargs = {}
@@ -81,6 +107,8 @@ def main() -> None:
 
     if args.sitemap:
         kwargs["sitemap_urls"] = args.sitemap
+
+    kwargs["download_images"] = args.download_images
 
     process.crawl(spider_cls, **kwargs)
     process.start()
