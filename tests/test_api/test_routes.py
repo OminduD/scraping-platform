@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from api.routes import dashboard as dashboard_routes
 from data_models import Product, JobListing
 
 
@@ -91,3 +92,29 @@ class TestAnalyticsRoute:
         data = resp.json()
         assert data["total_products"] == 0
         assert data["total_jobs"] == 0
+
+
+class TestDashboardRawScrape:
+    def test_raw_scrape_page_loads(self, client):
+        resp = client.get("/dashboard/raw-scrape")
+        assert resp.status_code == 200
+        assert "Manual Raw Scrape" in resp.text
+
+    def test_raw_scrape_result_renders(self, client, monkeypatch):
+        def _fake_run_raw_scrape(spider: str, url: str | None, max_items: int):
+            return {
+                "ok": True,
+                "file": "data/raw/products_raw_20260317T100000Z.json",
+                "count": 1,
+                "preview": [{"title": "Book A", "source": "test"}],
+            }
+
+        monkeypatch.setattr(dashboard_routes, "_run_raw_scrape", _fake_run_raw_scrape)
+        resp = client.post(
+            "/dashboard/raw-scrape",
+            data={"spider": "products", "url": "", "preview_limit": "5"},
+        )
+
+        assert resp.status_code == 200
+        assert "Saved 1 raw items." in resp.text
+        assert "products_raw_20260317T100000Z.json" in resp.text
