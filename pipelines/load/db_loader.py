@@ -54,7 +54,7 @@ class DatabasePipeline:
         spider_name: str = spider.name
 
         try:
-            if spider_name in ("products", "anix"):
+            if spider_name == "products":
                 self._upsert_product(item)
             elif spider_name == "jobs":
                 self._upsert_job(item)
