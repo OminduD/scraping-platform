@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Raw Scrape - Scraping Platform</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav>
+    <a class="brand" href="/static/index.html">Scraping Platform</a>
+    <a href="/static/index.html">Home</a>
+    <a href="/static/raw-scrape.html" class="active">Raw Scrape</a>
+    <a href="/static/load-to-db.html">Load to DB</a>
+  </nav>
+
+  <div class="container">
+    <h1>Manual Raw Scrape</h1>
+    <p class="meta">Run a spider and save raw JSON output to data/raw without DB processing.</p>
+
+    <div class="card" style="margin-bottom: 1.5rem;" id="scrape-form-card">
+      <h2>Start Scrape</h2>
+      <form id="scrape-form">
+        <div class="form-group">
+          <label for="spider">Spider</label>
+          <select id="spider" name="spider" required>
+            <option value="products">Products</option>
+            <option value="jobs">Jobs</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="url">URL (optional - leave empty for default)</label>
+          <input type="url" id="url" name="url" placeholder="https://example.com">
+        </div>
+        <div class="form-group">
+          <label for="preview_limit">Preview Limit</label>
+          <input type="number" id="preview_limit" name="preview_limit" value="10" min="1" max="100">
+        </div>
+        <button type="submit" class="btn btn-success">Run Scrape</button>
+      </form>
+    </div>
+
+    <div id="result" style="display: none;">
+      <div class="card" style="margin-bottom: 1rem;">
+        <h2>Result</h2>
+        <p id="result-message" class="meta success"></p>
+        <p id="result-file"></p>
+      </div>
+
+      <div class="card" style="margin-bottom: 1rem;">
+        <h2>Export Options</h2>
+        <div class="export-btns" id="export-btns"></div>
+        <button id="load-to-db-btn" class="btn btn-success">Load to PostgreSQL</button>
+      </div>
+
+      <div class="card">
+        <h2>Preview</h2>
+        <div id="preview-table" class="loading">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/dashboard.js"></script>
+  <script>
+    let currentFileName = '';
+    let currentItemType = '';
+
+    document.getElementById('scrape-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const form = e.target;
+      const formData = new FormData(form);
+      const submitBtn = form.querySelector('button[type="submit"]');
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Running...';
+
+      try {
+        const res = await fetch('/api/v1/raw-scrape', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+          currentFileName = data.file.split('/').pop();
+          currentItemType = formData.get('spider').includes('job') ? 'job' : 'product';
+
+          document.getElementById('result-message').textContent = `Saved ${data.count} raw items to data/raw.`;
+          document.getElementById('result-file').textContent = `File: ${data.file}`;
+
+          // Export buttons
+          document.getElementById('export-btns').innerHTML = `
+            <a href="/export/raw/${currentFileName}/csv" class="btn">CSV</a>
+            <a href="/export/raw/${currentFileName}/tsv" class="btn">TSV</a>
+            <a href="/export/raw/${currentFileName}/psv" class="btn">PSV</a>
+            <a href="/export/raw/${currentFileName}/html" class="btn">HTML</a>
+          `;
+
+          // Preview table
+          document.getElementById('preview-table').innerHTML = renderRawDataTable(data.preview || []);
+
+          document.getElementById('result').style.display = 'block';
+        } else {
+          alert('Scrape failed: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Run Scrape';
+      }
+    });
+
+    document.getElementById('load-to-db-btn').addEventListener('click', async () => {
+      if (!currentFileName) return;
+
+      const btn = document.getElementById('load-to-db-btn');
+      btn.disabled = true;
+      btn.textContent = 'Loading...';
+
+      try {
+        const res = await fetch(`/export/load-to-db?filename=${encodeURIComponent(currentFileName)}&item_type=${currentItemType}`, {
+          method: 'POST'
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+          alert(data.message);
+        } else {
+          alert('Failed: ' + (data.detail || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Load to PostgreSQL';
+      }
+    });
+  </script>
+</body>
+</html>
