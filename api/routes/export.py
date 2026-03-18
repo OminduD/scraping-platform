@@ -1,18 +1,25 @@
-"""Export endpoints — download products/jobs as CSV, TSV, or HTML."""
+"""Export endpoints — download products/jobs as CSV, TSV, PSV, or HTML.
+
+Also provides endpoints to load raw JSON data into PostgreSQL.
+"""
 
 from __future__ import annotations
 
 import csv
 import io
+import json
 from html import escape
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi.responses import StreamingResponse, JSONResponse
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from api.services.product_service import ProductService
 from api.services.job_service import JobService
-from data_models import get_db
+from data_models import get_db, Product, JobListing
+from pipelines.transform.cleaner import _parse_price
 
 router = APIRouter()
 
@@ -37,6 +44,16 @@ def _rows_to_tsv(rows: list[dict]) -> str:
         return ""
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=rows[0].keys(), delimiter="\t")
+    writer.writeheader()
+    writer.writerows(rows)
+    return buf.getvalue()
+
+
+def _rows_to_psv(rows: list[dict]) -> str:
+    if not rows:
+        return ""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=rows[0].keys(), delimiter="|")
     writer.writeheader()
     writer.writerows(rows)
     return buf.getvalue()
@@ -176,6 +193,24 @@ def export_products_tsv(
     )
 
 
+@router.get("/products/psv")
+def export_products_psv(
+    source: str | None = None,
+    limit: int = Query(MAX_EXPORT_ROWS, ge=1, le=MAX_EXPORT_ROWS),
+    db: Session = Depends(get_db),
+):
+    """Download all products as a PSV (pipe-separated values) file."""
+    svc = ProductService(db)
+    products = svc.list_products(skip=0, limit=limit, source=source)
+    rows = [_product_to_dict(p) for p in products]
+    content = _rows_to_psv(rows)
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="text/plain",
+        headers={"Content-Disposition": "attachment; filename=products.psv"},
+    )
+
+
 # ── job exports ──────────────────────────────────────────────────────
 
 
@@ -231,3 +266,168 @@ def export_jobs_tsv(
         media_type="text/tab-separated-values",
         headers={"Content-Disposition": "attachment; filename=jobs.tsv"},
     )
+
+
+@router.get("/jobs/psv")
+def export_jobs_psv(
+    source: str | None = None,
+    limit: int = Query(MAX_EXPORT_ROWS, ge=1, le=MAX_EXPORT_ROWS),
+    db: Session = Depends(get_db),
+):
+    """Download all jobs as a PSV (pipe-separated values) file."""
+    svc = JobService(db)
+    jobs = svc.list_jobs(skip=0, limit=limit, source=source)
+    rows = [_job_to_dict(j) for j in jobs]
+    content = _rows_to_psv(rows)
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="text/plain",
+        headers={"Content-Disposition": "attachment; filename=jobs.psv"},
+    )
+
+
+# ── Load to PostgreSQL ───────────────────────────────────────────────
+
+RAW_DATA_DIR = Path("data/raw")
+
+
+def _clean_record(record: dict, item_type: str) -> dict:
+    """Apply the same transforms the Scrapy pipeline does."""
+    for field in ("title", "company", "location", "description"):
+        val = record.get(field)
+        if isinstance(val, str):
+            record[field] = val.strip()
+
+    if item_type == "product":
+        raw_price = record.get("price")
+        if isinstance(raw_price, str):
+            record["price"] = _parse_price(raw_price)
+
+    if "source" in record:
+        record["source"] = record["source"].lower()
+
+    record.pop("image_urls", None)
+    record.pop("images", None)
+    record.pop("availability", None)
+    record.pop("rating", None)
+
+    return record
+
+
+def _upsert_products(session: Session, records: list[dict]) -> int:
+    count = 0
+    for rec in records:
+        stmt = (
+            pg_insert(Product)
+            .values(
+                title=rec.get("title"),
+                price=rec.get("price"),
+                currency=rec.get("currency", "USD"),
+                description=rec.get("description"),
+                url=rec["url"],
+                image_url=rec.get("image_url"),
+                source=rec.get("source", ""),
+                location=rec.get("location"),
+                category=rec.get("category"),
+            )
+            .on_conflict_do_update(
+                index_elements=["url"],
+                set_={"title": rec.get("title"), "price": rec.get("price")},
+            )
+        )
+        session.execute(stmt)
+        count += 1
+    session.commit()
+    return count
+
+
+def _upsert_jobs(session: Session, records: list[dict]) -> int:
+    count = 0
+    for rec in records:
+        stmt = (
+            pg_insert(JobListing)
+            .values(
+                title=rec.get("title"),
+                company=rec.get("company"),
+                location=rec.get("location"),
+                description=rec.get("description"),
+                url=rec["url"],
+                source=rec.get("source", ""),
+                posted_at=rec.get("posted_at"),
+            )
+            .on_conflict_do_update(
+                index_elements=["url"],
+                set_={"title": rec.get("title"), "company": rec.get("company")},
+            )
+        )
+        session.execute(stmt)
+        count += 1
+    session.commit()
+    return count
+
+
+@router.get("/raw-files")
+def list_raw_files():
+    """List available raw JSON files that can be loaded into PostgreSQL."""
+    if not RAW_DATA_DIR.exists():
+        return {"files": []}
+
+    files = []
+    for f in sorted(RAW_DATA_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
+        item_type = "job" if "job" in f.name.lower() else "product"
+        files.append({
+            "name": f.name,
+            "path": str(f),
+            "type": item_type,
+            "size": f.stat().st_size,
+        })
+    return {"files": files}
+
+
+@router.post("/load-to-db")
+def load_to_postgresql(
+    filename: str = Query(..., description="Name of the raw JSON file to load"),
+    item_type: str = Query(..., pattern="^(product|job)$", description="Type of data: product or job"),
+    db: Session = Depends(get_db),
+):
+    """Load a raw JSON file into PostgreSQL database."""
+    file_path = RAW_DATA_DIR / filename
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {filename}")
+
+    if not file_path.suffix == ".json":
+        raise HTTPException(status_code=400, detail="Only JSON files are supported")
+
+    try:
+        text = file_path.read_text(encoding="utf-8")
+        data = json.loads(text)
+        if isinstance(data, dict):
+            data = [data]
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+
+    # Deduplicate by URL
+    seen_urls: set[str] = set()
+    unique_records = []
+    for rec in data:
+        url = rec.get("url", "")
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            unique_records.append(_clean_record(rec, item_type))
+
+    try:
+        if item_type == "product":
+            count = _upsert_products(db, unique_records)
+        else:
+            count = _upsert_jobs(db, unique_records)
+
+        return JSONResponse({
+            "ok": True,
+            "message": f"Successfully loaded {count} {item_type}(s) into PostgreSQL",
+            "loaded": count,
+            "file": filename,
+        })
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
