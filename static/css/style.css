@@ -168,6 +168,60 @@ img.thumb {
   margin-bottom: 1rem;
 }
 
+.table-wrap {
+  overflow-x: auto;
+}
+
+.preview-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.preview-chip {
+  background: #f1f3f5;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.preview-chip strong {
+  font-size: 0.78rem;
+  color: #495057;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.preview-chip span {
+  font-size: 1rem;
+  color: #212529;
+  font-weight: 600;
+}
+
+.preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+
+.preview-actions label {
+  font-weight: 600;
+  color: #495057;
+}
+
+.preview-actions select {
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  background: #fff;
+}
+
 /* Forms */
 .form-group {
   margin-bottom: 1rem;
