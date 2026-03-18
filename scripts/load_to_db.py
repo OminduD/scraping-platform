@@ -3,7 +3,7 @@
 Usage:
     python -m scripts.load_to_db data/processed/products.json --type product
     python -m scripts.load_to_db data/processed/jobs.json --type job
-    python -m scripts.load_to_db data/processed/anix_products.json --type product
+    python -m scripts.load_to_db data/raw/products_raw_*.json --type product
 
 Reads a JSON file produced by the scrapy FEEDS export, applies the same
 transform logic (dedup, price parsing, normalization), then upserts into
