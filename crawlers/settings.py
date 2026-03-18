@@ -25,8 +25,7 @@ ITEM_PIPELINES = {
     "pipelines.extract.html_parser.HtmlCleanPipeline": 100,
     "pipelines.transform.cleaner.TransformPipeline": 200,
     "pipelines.load.db_loader.DatabasePipeline": 300,
-    "pipelines.export.html_exporter.HtmlExportPipeline": 400,
-    "pipelines.export.tsv_exporter.TsvExportPipeline": 450,
+    "pipelines.export.json_exporter.JsonExportPipeline": 400,
 }
 
 # ── Image downloading ────────────────────────────────────────────────
