@@ -6,11 +6,12 @@ Usage:
     python -m scripts.run_spider products --url https://example.com
     python -m scripts.run_spider products --urls https://a.com https://b.com
     python -m scripts.run_spider products --url-file configs/urls.txt
-    python -m scripts.run_spider products --sitemap https://example.com/sitemap.xml
+    python -m scripts.run_spider products --url https://example.com --sitemap
+    python -m scripts.run_spider products --sitemap-url https://example.com/sitemap.xml
     python -m scripts.run_spider products --download-images
 
 Priority: --url/--urls > --url-file > spider default start_urls
-Sitemap: --sitemap can be combined with any spider to discover URLs from a sitemap.
+Sitemap: --sitemap auto-discovers sitemap.xml from base URL, --sitemap-url for explicit sitemap.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from __future__ import annotations
 import argparse
 import importlib
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
 
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
@@ -43,6 +45,16 @@ def load_urls_from_file(filepath: str) -> list[str]:
     return urls
 
 
+def derive_sitemap_urls(base_urls: list[str]) -> list[str]:
+    """Derive sitemap URLs from base URLs by appending /sitemap.xml."""
+    sitemap_urls = []
+    for url in base_urls:
+        parsed = urlparse(url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        sitemap_urls.append(urljoin(base, "/sitemap.xml"))
+    return list(set(sitemap_urls))  # deduplicate
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a spider by name")
     parser.add_argument("spider", choices=SPIDERS.keys(), help="Spider to run")
@@ -54,10 +66,15 @@ def main() -> None:
 
     parser.add_argument(
         "--sitemap",
+        action="store_true",
+        help="Enable sitemap discovery mode. Tries to find sitemap.xml from the base URL. "
+             "Use with --url or --urls. Example: --url https://example.com --sitemap",
+    )
+    parser.add_argument(
+        "--sitemap-url",
         nargs="+",
         metavar="URL",
-        help="Discover URLs from sitemap(s) instead of using start_urls. "
-             "Works with any spider. Example: --sitemap https://example.com/sitemap.xml",
+        help="Explicit sitemap URL(s) to use. Example: --sitemap-url https://example.com/sitemap.xml",
     )
     parser.add_argument(
         "--output-json",
@@ -104,8 +121,18 @@ def main() -> None:
     elif args.url_file:
         kwargs["start_urls"] = load_urls_from_file(args.url_file)
 
-    if args.sitemap:
-        kwargs["sitemap_urls"] = args.sitemap
+    # Handle sitemap modes
+    if args.sitemap_url:
+        # Explicit sitemap URL(s) provided
+        kwargs["sitemap_urls"] = args.sitemap_url
+    elif args.sitemap:
+        # Auto-discover sitemap from base URL(s)
+        base_urls = kwargs.get("start_urls", [])
+        if not base_urls:
+            parser.error("--sitemap requires --url, --urls, or --url-file to derive sitemap URLs")
+        kwargs["sitemap_urls"] = derive_sitemap_urls(base_urls)
+        # Clear start_urls since sitemap will provide them
+        kwargs.pop("start_urls", None)
 
     kwargs["download_images"] = args.download_images
 
