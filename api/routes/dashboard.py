@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+from datetime import datetime, timezone
 from html import escape
+from pathlib import Path
+from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Form, Query
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
@@ -16,6 +22,7 @@ from data_models import get_db
 router = APIRouter()
 
 DEFAULT_LIMIT = 100
+RAW_OUTPUT_DIR = Path("data/raw")
 
 
 def _page_shell(title: str, body: str, nav_active: str = "") -> str:
@@ -61,12 +68,68 @@ def _page_shell(title: str, body: str, nav_active: str = "") -> str:
   <a href="/dashboard/" class="{_nav_cls("home")}">Home</a>
   <a href="/dashboard/products" class="{_nav_cls("products")}">Products</a>
   <a href="/dashboard/jobs" class="{_nav_cls("jobs")}">Jobs</a>
+  <a href="/dashboard/raw-scrape" class="{_nav_cls("raw_scrape")}">Raw Scrape</a>
 </nav>
 <div class="container">
 {body}
 </div>
 </body>
 </html>"""
+
+
+def _run_raw_scrape(
+    spider: str,
+    url: str | None,
+    max_items: int,
+) -> dict[str, Any]:
+    """Run a spider and store raw scraped output in a JSON file."""
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    output_file = RAW_OUTPUT_DIR / f"{spider}_raw_{timestamp}.json"
+    cmd = [
+        sys.executable,
+        "-m",
+        "scripts.run_spider",
+        spider,
+        "--output-json",
+        str(output_file),
+    ]
+    if url:
+        cmd.extend(["--url", url])
+
+    run = subprocess.run(
+        cmd,
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+        timeout=max(60, max_items * 2),
+    )
+
+    if run.returncode != 0:
+        return {
+            "ok": False,
+            "error": (run.stderr or run.stdout or "Spider execution failed").strip(),
+        }
+
+    if not output_file.exists():
+        return {
+            "ok": False,
+            "error": "Scrape finished but no JSON output file was created.",
+        }
+
+    try:
+        payload = json.loads(output_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        payload = []
+
+    if not isinstance(payload, list):
+        payload = []
+
+    return {
+        "ok": True,
+        "file": str(output_file),
+        "count": len(payload),
+        "preview": payload[:max_items],
+    }
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -106,14 +169,21 @@ def dashboard_home(db: Session = Depends(get_db)):
     <h2>Products</h2>
     <a href="/export/products/csv" class="btn">CSV</a>
     <a href="/export/products/tsv" class="btn">TSV</a>
+    <a href="/export/products/psv" class="btn">PSV</a>
     <a href="/export/products/html" class="btn">HTML</a>
   </div>
   <div class="card">
     <h2>Jobs</h2>
     <a href="/export/jobs/csv" class="btn">CSV</a>
     <a href="/export/jobs/tsv" class="btn">TSV</a>
+    <a href="/export/jobs/psv" class="btn">PSV</a>
     <a href="/export/jobs/html" class="btn">HTML</a>
   </div>
+</div>
+<h2 style="margin-top:2rem;">Load Raw Data to PostgreSQL</h2>
+<div class="card" style="margin-top:1rem;">
+  <p class="meta">Load scraped JSON data from data/raw into the PostgreSQL database.</p>
+  <a href="/dashboard/load-to-db" class="btn">Load to DB</a>
 </div>
 {f'<h2 style="margin-top:2rem;">Sources</h2><ul style="margin-top:.5rem;">{sources_html}</ul>' if sources_html else ""}
 """
@@ -244,3 +314,191 @@ def dashboard_jobs(
         f"{pagination}"
     )
     return _page_shell("Jobs", body, nav_active="jobs")
+
+
+@router.get("/raw-scrape", response_class=HTMLResponse)
+def dashboard_raw_scrape():
+        """Render manual raw scrape form."""
+        body = """
+<h1>Manual Raw Scrape</h1>
+<p class="meta">Run one spider and save only raw scraped data to a JSON file in data/raw.</p>
+<form method="post" action="/dashboard/raw-scrape" style="display:grid;gap:1rem;max-width:700px;background:#fff;padding:1rem;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.1);">
+    <label>
+        Spider
+        <select name="spider" style="display:block;margin-top:.35rem;padding:.45rem;width:100%;">
+            <option value="products">products</option>
+            <option value="jobs">jobs</option>
+            <option value="anix">anix</option>
+        </select>
+    </label>
+    <label>
+        URL (optional)
+        <input type="url" name="url" placeholder="https://example.com" style="display:block;margin-top:.35rem;padding:.45rem;width:100%;" />
+    </label>
+    <label>
+        Preview Items
+        <input type="number" name="preview_limit" min="1" max="100" value="10" style="display:block;margin-top:.35rem;padding:.45rem;width:140px;" />
+    </label>
+    <button type="submit" style="padding:.6rem 1rem;background:#0d6efd;color:#fff;border:none;border-radius:4px;cursor:pointer;width:max-content;">Run Raw Scrape</button>
+</form>
+"""
+        return _page_shell("Manual Raw Scrape", body, nav_active="raw_scrape")
+
+
+@router.post("/raw-scrape", response_class=HTMLResponse)
+def dashboard_raw_scrape_run(
+        spider: str = Form(...),
+        url: str | None = Form(default=None),
+        preview_limit: int = Form(default=10),
+):
+        """Run a manual scrape and show saved JSON output details in UI."""
+        if spider not in {"products", "jobs", "anix"}:
+                body = "<h1>Manual Raw Scrape</h1><p class='meta'>Invalid spider selected.</p>"
+                return _page_shell("Manual Raw Scrape", body, nav_active="raw_scrape")
+
+        normalized_url = (url or "").strip() or None
+        safe_preview_limit = max(1, min(preview_limit, 100))
+        result = _run_raw_scrape(
+                spider=spider,
+                url=normalized_url,
+                max_items=safe_preview_limit,
+        )
+
+        if not result["ok"]:
+                body = f"""
+<h1>Manual Raw Scrape</h1>
+<p class="meta" style="color:#b42318;">Scrape failed: {escape(result['error'])}</p>
+<a href="/dashboard/raw-scrape" class="btn">Try again</a>
+"""
+                return _page_shell("Manual Raw Scrape", body, nav_active="raw_scrape")
+
+        preview_json = escape(json.dumps(result["preview"], indent=2, ensure_ascii=True))
+        body = f"""
+<h1>Manual Raw Scrape</h1>
+<p class="meta" style="color:#027a48;">Saved {result['count']} raw items.</p>
+<div class="card" style="margin-bottom:1rem;">
+    <h2>Saved File</h2>
+    <p>{escape(result['file'])}</p>
+    <p class="meta">Spider: {escape(spider)}{f" | URL: {escape(normalized_url)}" if normalized_url else ""}</p>
+</div>
+<div class="card">
+    <h2>Preview (first {safe_preview_limit})</h2>
+    <pre style="white-space:pre-wrap;word-break:break-word;background:#101828;color:#f2f4f7;padding:1rem;border-radius:6px;overflow:auto;">{preview_json}</pre>
+</div>
+<a href="/dashboard/raw-scrape" class="btn">Run another raw scrape</a>
+"""
+        return _page_shell("Manual Raw Scrape", body, nav_active="raw_scrape")
+
+
+@router.get("/load-to-db", response_class=HTMLResponse)
+def dashboard_load_to_db():
+    """Render the Load to DB page with available raw JSON files."""
+    files_html = ""
+    raw_dir = RAW_OUTPUT_DIR
+    if raw_dir.exists():
+        json_files = sorted(raw_dir.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True)
+        if json_files:
+            for f in json_files:
+                item_type = "job" if "job" in f.name.lower() else "product"
+                size_kb = f.stat().st_size / 1024
+                files_html += f"""
+<div class="card" style="margin-bottom:1rem;">
+    <h2>{escape(f.name)}</h2>
+    <p class="meta">Type: {item_type} | Size: {size_kb:.1f} KB</p>
+    <form method="post" action="/dashboard/load-to-db" style="display:inline;">
+        <input type="hidden" name="filename" value="{escape(f.name)}">
+        <input type="hidden" name="item_type" value="{item_type}">
+        <button type="submit" class="btn" style="border:none;cursor:pointer;">Load to PostgreSQL</button>
+    </form>
+</div>
+"""
+        else:
+            files_html = '<p class="meta">No raw JSON files found in data/raw.</p>'
+    else:
+        files_html = '<p class="meta">data/raw directory does not exist. Run a raw scrape first.</p>'
+
+    body = f"""
+<h1>Load Raw Data to PostgreSQL</h1>
+<p class="meta">Select a raw JSON file to load into the PostgreSQL database.</p>
+{files_html}
+<a href="/dashboard/" class="btn">Back to Dashboard</a>
+"""
+    return _page_shell("Load to DB", body, nav_active="home")
+
+
+@router.post("/load-to-db", response_class=HTMLResponse)
+def dashboard_load_to_db_run(
+    filename: str = Form(...),
+    item_type: str = Form(...),
+):
+    """Load selected raw JSON file into PostgreSQL."""
+    import requests
+
+    # Call the export API endpoint to load data
+    try:
+        # Use internal API call to load data
+        from api.routes.export import load_to_postgresql, _clean_record, _upsert_products, _upsert_jobs, RAW_DATA_DIR
+        from data_models import SessionLocal
+
+        file_path = RAW_DATA_DIR / filename
+
+        if not file_path.exists():
+            body = f"""
+<h1>Load to DB</h1>
+<p class="meta" style="color:#b42318;">File not found: {escape(filename)}</p>
+<a href="/dashboard/load-to-db" class="btn">Try again</a>
+"""
+            return _page_shell("Load to DB", body, nav_active="home")
+
+        text = file_path.read_text(encoding="utf-8")
+        data = json.loads(text)
+        if isinstance(data, dict):
+            data = [data]
+
+        # Deduplicate by URL
+        seen_urls: set[str] = set()
+        unique_records = []
+        for rec in data:
+            url = rec.get("url", "")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                unique_records.append(_clean_record(rec, item_type))
+
+        session = SessionLocal()
+        try:
+            if item_type == "product":
+                count = _upsert_products(session, unique_records)
+            else:
+                count = _upsert_jobs(session, unique_records)
+
+            body = f"""
+<h1>Load to DB</h1>
+<p class="meta" style="color:#027a48;">Successfully loaded {count} {item_type}(s) into PostgreSQL.</p>
+<div class="card">
+    <h2>Details</h2>
+    <p>File: {escape(filename)}</p>
+    <p>Type: {item_type}</p>
+    <p>Records loaded: {count}</p>
+</div>
+<a href="/dashboard/load-to-db" class="btn">Load another file</a>
+<a href="/dashboard/" class="btn">Back to Dashboard</a>
+"""
+            return _page_shell("Load to DB", body, nav_active="home")
+        except Exception as e:
+            session.rollback()
+            body = f"""
+<h1>Load to DB</h1>
+<p class="meta" style="color:#b42318;">Database error: {escape(str(e))}</p>
+<a href="/dashboard/load-to-db" class="btn">Try again</a>
+"""
+            return _page_shell("Load to DB", body, nav_active="home")
+        finally:
+            session.close()
+
+    except Exception as e:
+        body = f"""
+<h1>Load to DB</h1>
+<p class="meta" style="color:#b42318;">Error: {escape(str(e))}</p>
+<a href="/dashboard/load-to-db" class="btn">Try again</a>
+"""
+        return _page_shell("Load to DB", body, nav_active="home")
