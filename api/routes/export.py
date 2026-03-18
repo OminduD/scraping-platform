@@ -450,25 +450,52 @@ def _load_raw_json(filename: str) -> list[dict]:
         data = json.loads(text)
         if isinstance(data, dict):
             data = [data]
-        if not isinstance(data, list):
-            raise HTTPException(status_code=400, detail="Invalid JSON: expected array or object at root")
-        return data
+        if isinstance(data, list):
+            return [row for row in data if isinstance(row, dict)]
     except json.JSONDecodeError:
-        # Fallback for JSON Lines files
-        rows: list[dict] = []
-        for line in text.splitlines():
-            stripped = line.strip()
-            if not stripped:
-                continue
+        pass
+
+    # Recover rows from partially written JSON arrays (e.g., interrupted checkpoint writes).
+    decoder = json.JSONDecoder()
+    partial_rows: list[dict] = []
+    idx = text.find("[")
+    if idx >= 0:
+        idx += 1
+        while idx < len(text):
+            # Skip delimiters and whitespace between array elements.
+            while idx < len(text) and text[idx] in " \t\r\n,]":
+                idx += 1
+            if idx >= len(text):
+                break
             try:
-                obj = json.loads(stripped)
-            except json.JSONDecodeError as e:
-                raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+                obj, idx = decoder.raw_decode(text, idx)
+            except json.JSONDecodeError:
+                break
+
             if isinstance(obj, dict):
-                rows.append(obj)
-            else:
-                raise HTTPException(status_code=400, detail="Invalid JSON Lines: each line must be a JSON object")
+                partial_rows.append(obj)
+            elif isinstance(obj, list):
+                partial_rows.extend(row for row in obj if isinstance(row, dict))
+
+    if partial_rows:
+        return partial_rows
+
+    rows: list[dict] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            obj = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            rows.append(obj)
+
+    if rows:
         return rows
+
+    raise HTTPException(status_code=400, detail="Invalid JSON/JSON Lines file.")
 
 
 @router.get("/raw/{filename}/csv")
