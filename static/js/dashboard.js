@@ -29,6 +29,45 @@ function isImageField(key) {
   return k === 'image_url' || k === 'image' || k === 'img_url' || k === 'thumbnail' || k === 'photo' || k === 'picture';
 }
 
+function toCellText(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch (_) {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+function collectRawTableColumns(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return [];
+  }
+
+  const normalizedItems = items.map((item) => {
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      return item;
+    }
+    return { value: item };
+  });
+
+  const allKeys = [];
+  for (const item of normalizedItems) {
+    for (const key of Object.keys(item)) {
+      if (!allKeys.includes(key)) {
+        allKeys.push(key);
+      }
+    }
+  }
+
+  const priority = ['image_url', 'image', 'thumbnail', 'title', 'price', 'url', 'company', 'location', 'source'];
+  const orderedKeys = priority.filter(k => allKeys.includes(k));
+  orderedKeys.push(...allKeys.filter(k => !priority.includes(k)));
+  return orderedKeys;
+}
+
 function renderProductsTable(items) {
   if (!items || items.length === 0) {
     return '<p class="meta">No products found.</p>';
@@ -109,20 +148,13 @@ function renderRawDataTable(items) {
     return '<p class="meta">No items to display.</p>';
   }
 
-  // Collect all unique keys
-  const allKeys = [];
-  for (const item of items) {
-    for (const key of Object.keys(item)) {
-      if (!allKeys.includes(key)) {
-        allKeys.push(key);
-      }
+  const normalizedItems = items.map((item) => {
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      return item;
     }
-  }
-
-  // Prioritize common fields
-  const priority = ['image_url', 'image', 'thumbnail', 'title', 'price', 'url', 'company', 'location', 'source'];
-  const orderedKeys = priority.filter(k => allKeys.includes(k));
-  orderedKeys.push(...allKeys.filter(k => !priority.includes(k)));
+    return { value: item };
+  });
+  const orderedKeys = collectRawTableColumns(normalizedItems);
 
   let html = '<table><thead><tr>';
   for (const key of orderedKeys) {
@@ -130,24 +162,25 @@ function renderRawDataTable(items) {
   }
   html += '</tr></thead><tbody>';
 
-  for (const item of items) {
+  for (const item of normalizedItems) {
     html += '<tr>';
     for (const key of orderedKeys) {
       const val = item[key];
+      const textVal = toCellText(val);
 
       // Check if this is an image field or an image URL
-      if (isImageField(key) && val && isUrl(val)) {
-        html += `<td><img class="thumb" src="${escapeHtml(val)}" alt="" onerror="this.style.display='none'"></td>`;
-      } else if (key === 'url' && val) {
-        html += `<td><a href="${escapeHtml(val)}" target="_blank">View</a></td>`;
-      } else if (isImageUrl(val)) {
+      if (isImageField(key) && textVal && isUrl(textVal)) {
+        html += `<td><img class="thumb" src="${escapeHtml(textVal)}" alt="" onerror="this.style.display='none'"></td>`;
+      } else if (key === 'url' && textVal) {
+        html += `<td><a href="${escapeHtml(textVal)}" target="_blank">View</a></td>`;
+      } else if (isImageUrl(textVal)) {
         // If it looks like an image URL, show as image
-        html += `<td><img class="thumb" src="${escapeHtml(val)}" alt="" onerror="this.style.display='none'"></td>`;
-      } else if (isUrl(val)) {
+        html += `<td><img class="thumb" src="${escapeHtml(textVal)}" alt="" onerror="this.style.display='none'"></td>`;
+      } else if (isUrl(textVal)) {
         // Other URLs - make clickable
-        html += `<td><a href="${escapeHtml(val)}" target="_blank">${escapeHtml(truncate(val, 40))}</a></td>`;
+        html += `<td><a href="${escapeHtml(textVal)}" target="_blank">${escapeHtml(truncate(textVal, 40))}</a></td>`;
       } else {
-        html += `<td>${escapeHtml(truncate(val, 100))}</td>`;
+        html += `<td>${escapeHtml(truncate(textVal, 100))}</td>`;
       }
     }
     html += '</tr>';
