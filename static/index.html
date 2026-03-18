@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard - Scraping Platform</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav>
+    <a class="brand" href="/static/index.html">Scraping Platform</a>
+    <a href="/static/index.html" class="active">Home</a>
+    <a href="/static/raw-scrape.html">Raw Scrape</a>
+    <a href="/static/load-to-db.html">Load to DB</a>
+  </nav>
+
+  <div class="container">
+    <h1>Dashboard</h1>
+
+    <div class="card-grid" id="stats">
+      <div class="card">
+        <h2>Total Products</h2>
+        <div class="stat" id="product-count">-</div>
+        <div class="export-btns">
+          <a href="/export/products/csv" class="btn">CSV</a>
+          <a href="/export/products/tsv" class="btn">TSV</a>
+          <a href="/export/products/psv" class="btn">PSV</a>
+          <a href="/export/products/html" class="btn">HTML</a>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Total Jobs</h2>
+        <div class="stat" id="job-count">-</div>
+        <div class="export-btns">
+          <a href="/export/jobs/csv" class="btn">CSV</a>
+          <a href="/export/jobs/tsv" class="btn">TSV</a>
+          <a href="/export/jobs/psv" class="btn">PSV</a>
+          <a href="/export/jobs/html" class="btn">HTML</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+      <h2>Recent Products</h2>
+      <div id="products-table" class="loading">Loading...</div>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+      <h2>Recent Jobs</h2>
+      <div id="jobs-table" class="loading">Loading...</div>
+    </div>
+  </div>
+
+  <script src="/static/js/dashboard.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      loadStats();
+      loadProducts();
+      loadJobs();
+    });
+
+    async function loadStats() {
+      try {
+        const res = await fetch('/api/v1/analytics');
+        const data = await res.json();
+        document.getElementById('product-count').textContent = data.products_count || 0;
+        document.getElementById('job-count').textContent = data.jobs_count || 0;
+      } catch (e) {
+        console.error('Failed to load stats:', e);
+      }
+    }
+
+    async function loadProducts() {
+      try {
+        const res = await fetch('/api/v1/products?limit=10');
+        const data = await res.json();
+        document.getElementById('products-table').innerHTML = renderProductsTable(data.items || []);
+      } catch (e) {
+        document.getElementById('products-table').innerHTML = '<p class="error">Failed to load products</p>';
+      }
+    }
+
+    async function loadJobs() {
+      try {
+        const res = await fetch('/api/v1/jobs?limit=10');
+        const data = await res.json();
+        document.getElementById('jobs-table').innerHTML = renderJobsTable(data.items || []);
+      } catch (e) {
+        document.getElementById('jobs-table').innerHTML = '<p class="error">Failed to load jobs</p>';
+      }
+    }
+  </script>
+</body>
+</html>
