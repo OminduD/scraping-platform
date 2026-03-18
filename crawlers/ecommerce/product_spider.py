@@ -32,13 +32,6 @@ class ProductSpider(BaseSpider):
 
     custom_settings: dict[str, Any] = {
         "DOWNLOAD_DELAY": 1.5,
-        "FEEDS": {
-            "data/processed/products.json": {
-                "format": "json",
-                "encoding": "utf-8",
-                "overwrite": True,
-            },
-        },
     }
 
     def __init__(

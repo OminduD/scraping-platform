@@ -32,6 +32,14 @@
           <label for="url">URL (optional - leave empty for default)</label>
           <input type="url" id="url" name="url" placeholder="https://example.com">
         </div>
+        <div class="form-group" style="display:flex;align-items:center;gap:.5rem;">
+          <input type="checkbox" id="sitemap" name="sitemap" value="true">
+          <label for="sitemap" style="margin:0;">Use sitemap discovery</label>
+        </div>
+        <div class="form-group">
+          <label for="sitemap_url">Sitemap URL (optional)</label>
+          <input type="url" id="sitemap_url" name="sitemap_url" placeholder="https://example.com/sitemap.xml">
+        </div>
         <div class="form-group">
           <label for="preview_limit">Preview Limit</label>
           <input type="number" id="preview_limit" name="preview_limit" value="10" min="1" max="100">

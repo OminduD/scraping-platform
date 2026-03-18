@@ -31,15 +31,14 @@ class JsonExportPipeline:
 
     def close_spider(self, spider) -> None:
         spider_name = spider.name
-        if not self.items:
-            logger.info("json_export.no_items", spider=spider_name)
-            return
-
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         filename = f"{spider_name}_{timestamp}.json"
         path = OUTPUT_DIR / filename
+
+        if not self.items:
+            logger.info("json_export.no_items", spider=spider_name, path=str(path))
 
         path.write_text(
             json.dumps(self.items, default=str, ensure_ascii=False, indent=2),

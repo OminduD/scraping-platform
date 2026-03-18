@@ -1,7 +1,7 @@
 """Standalone ETL runner — can be used outside of Scrapy pipelines.
 
 Usage:
-    python -m pipelines.etl_runner --input data/raw/products.json --type product
+    python -m pipelines.etl_runner --input data/raw/products_20260318_065708.json --type product
 """
 
 from __future__ import annotations
@@ -13,18 +13,37 @@ from pathlib import Path
 import pandas as pd
 import structlog
 
-from data_models import Product, JobListing, SessionLocal
+from data_models import JobListing, Product, SessionLocal
 from pipelines.transform.cleaner import _parse_price
 
 logger = structlog.get_logger(__name__)
 
 
 def extract(path: Path) -> list[dict]:
-    """Read raw JSON lines or JSON array from disk."""
-    text = path.read_text()
-    data = json.loads(text)
-    if isinstance(data, dict):
-        data = [data]
+    """Read raw JSON from disk (array/object, with JSONL fallback)."""
+    text = path.read_text(encoding="utf-8")
+
+    if not text.strip():
+        data = []
+    else:
+        try:
+            data = json.loads(text)
+            if isinstance(data, dict):
+                data = [data]
+            elif not isinstance(data, list):
+                raise ValueError("Unsupported JSON root type. Expected object or array.")
+        except json.JSONDecodeError:
+            # Support JSONL files (one JSON object per line)
+            data = []
+            for line in text.splitlines():
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                obj = json.loads(stripped)
+                if not isinstance(obj, dict):
+                    raise ValueError("Invalid JSONL format. Each line must be a JSON object.")
+                data.append(obj)
+
     logger.info("etl.extract", records=len(data), path=str(path))
     return data
 

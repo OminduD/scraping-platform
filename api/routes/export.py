@@ -442,14 +442,33 @@ def _load_raw_json(filename: str) -> list[dict]:
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {filename}")
 
+    text = file_path.read_text(encoding="utf-8")
+    if not text.strip():
+        return []
+
     try:
-        text = file_path.read_text(encoding="utf-8")
         data = json.loads(text)
         if isinstance(data, dict):
             data = [data]
+        if not isinstance(data, list):
+            raise HTTPException(status_code=400, detail="Invalid JSON: expected array or object at root")
         return data
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+    except json.JSONDecodeError:
+        # Fallback for JSON Lines files
+        rows: list[dict] = []
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                obj = json.loads(stripped)
+            except json.JSONDecodeError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+            if isinstance(obj, dict):
+                rows.append(obj)
+            else:
+                raise HTTPException(status_code=400, detail="Invalid JSON Lines: each line must be a JSON object")
+        return rows
 
 
 @router.get("/raw/{filename}/csv")
@@ -514,3 +533,18 @@ def export_raw_json(filename: str):
         media_type="application/json",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+@router.get("/raw/{filename}/preview")
+def preview_raw_file(
+    filename: str,
+    limit: int = Query(20, ge=1, le=100, description="Number of items to preview"),
+):
+    """Get preview data from raw JSON file for dashboard display."""
+    rows = _load_raw_json(filename)
+    return {
+        "filename": filename,
+        "total": len(rows),
+        "preview_count": min(limit, len(rows)),
+        "items": rows[:limit],
+    }

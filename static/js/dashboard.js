@@ -18,6 +18,17 @@ function isUrl(str) {
   return String(str).startsWith('http://') || String(str).startsWith('https://');
 }
 
+function isImageUrl(str) {
+  if (!str || !isUrl(str)) return false;
+  const url = String(str).toLowerCase();
+  return url.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?|$)/i) !== null;
+}
+
+function isImageField(key) {
+  const k = key.toLowerCase();
+  return k === 'image_url' || k === 'image' || k === 'img_url' || k === 'thumbnail' || k === 'photo' || k === 'picture';
+}
+
 function renderProductsTable(items) {
   if (!items || items.length === 0) {
     return '<p class="meta">No products found.</p>';
@@ -109,7 +120,7 @@ function renderRawDataTable(items) {
   }
 
   // Prioritize common fields
-  const priority = ['image_url', 'title', 'price', 'url', 'company', 'location', 'source'];
+  const priority = ['image_url', 'image', 'thumbnail', 'title', 'price', 'url', 'company', 'location', 'source'];
   const orderedKeys = priority.filter(k => allKeys.includes(k));
   orderedKeys.push(...allKeys.filter(k => !priority.includes(k)));
 
@@ -124,11 +135,16 @@ function renderRawDataTable(items) {
     for (const key of orderedKeys) {
       const val = item[key];
 
-      if (key === 'image_url' && val) {
+      // Check if this is an image field or an image URL
+      if (isImageField(key) && val && isUrl(val)) {
         html += `<td><img class="thumb" src="${escapeHtml(val)}" alt="" onerror="this.style.display='none'"></td>`;
       } else if (key === 'url' && val) {
         html += `<td><a href="${escapeHtml(val)}" target="_blank">View</a></td>`;
+      } else if (isImageUrl(val)) {
+        // If it looks like an image URL, show as image
+        html += `<td><img class="thumb" src="${escapeHtml(val)}" alt="" onerror="this.style.display='none'"></td>`;
       } else if (isUrl(val)) {
+        // Other URLs - make clickable
         html += `<td><a href="${escapeHtml(val)}" target="_blank">${escapeHtml(truncate(val, 40))}</a></td>`;
       } else {
         html += `<td>${escapeHtml(truncate(val, 100))}</td>`;

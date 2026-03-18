@@ -46,6 +46,17 @@
       <div id="raw-files-list" class="loading">Loading...</div>
     </div>
 
+    <div id="raw-preview-modal" class="modal" style="display: none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="preview-modal-title">Preview</h2>
+          <button class="modal-close" onclick="closePreviewModal()">&times;</button>
+        </div>
+        <p class="meta" id="preview-modal-meta"></p>
+        <div id="preview-modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
     <div class="card" style="margin-top: 1.5rem;">
       <h2>Recent Products (from DB)</h2>
       <div id="products-table" class="loading">Loading...</div>
@@ -99,6 +110,7 @@
             <td>${sizeKb} KB</td>
             <td>${modified}</td>
             <td>
+              <button class="btn" onclick="loadPreview('${escapeHtml(f.name)}')">Preview</button>
               <a href="/export/raw/${encodeURIComponent(f.name)}/csv" class="btn">CSV</a>
               <a href="/export/raw/${encodeURIComponent(f.name)}/json" class="btn">JSON</a>
             </td>
@@ -110,6 +122,41 @@
         document.getElementById('raw-files-list').innerHTML = '<p class="error">Failed to load raw files</p>';
       }
     }
+
+    async function loadPreview(filename) {
+      try {
+        const res = await fetch(`/export/raw/${encodeURIComponent(filename)}/preview?limit=20`);
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.detail || 'Failed to load preview');
+        }
+
+        const total = Number.isFinite(data.total) ? data.total : (Array.isArray(data.items) ? data.items.length : 0);
+        const previewCount = Number.isFinite(data.preview_count) ? data.preview_count : (Array.isArray(data.items) ? data.items.length : 0);
+
+        document.getElementById('preview-modal-title').textContent = `Preview: ${filename}`;
+        document.getElementById('preview-modal-meta').textContent = `Showing ${previewCount} of ${total} items`;
+        document.getElementById('preview-modal-body').innerHTML = renderRawDataTable(data.items || []);
+        document.getElementById('raw-preview-modal').style.display = 'flex';
+      } catch (e) {
+        document.getElementById('preview-modal-title').textContent = `Preview: ${filename}`;
+        document.getElementById('preview-modal-meta').textContent = 'Preview unavailable';
+        document.getElementById('preview-modal-body').innerHTML = `<p class="meta">${escapeHtml(e.message)}</p>`;
+        document.getElementById('raw-preview-modal').style.display = 'flex';
+      }
+    }
+
+    function closePreviewModal() {
+      document.getElementById('raw-preview-modal').style.display = 'none';
+    }
+
+    // Close modal on outside click
+    document.getElementById('raw-preview-modal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'raw-preview-modal') {
+        closePreviewModal();
+      }
+    });
 
     async function loadProducts() {
       try {

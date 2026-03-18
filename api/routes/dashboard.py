@@ -30,6 +30,19 @@ def _render_raw_preview_table(items: list[dict]) -> str:
     if not items:
         return "<p>No items to display.</p>"
 
+    def _is_image_field(key: str) -> bool:
+        """Check if field name suggests it contains an image URL."""
+        k = key.lower()
+        return k in ("image_url", "image", "img_url", "thumbnail", "photo", "picture")
+
+    def _is_image_url(url: str) -> bool:
+        """Check if URL points to an image file."""
+        if not url or not isinstance(url, str):
+            return False
+        lower_url = url.lower()
+        return any(lower_url.endswith(ext) or f"{ext}?" in lower_url
+                   for ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp"))
+
     # Collect all unique keys across all items
     all_keys: list[str] = []
     for item in items:
@@ -38,7 +51,7 @@ def _render_raw_preview_table(items: list[dict]) -> str:
                 all_keys.append(k)
 
     # Prioritize common fields
-    priority = ["image_url", "title", "price", "url", "company", "location", "source"]
+    priority = ["image_url", "image", "thumbnail", "title", "price", "url", "company", "location", "source"]
     ordered_keys = [k for k in priority if k in all_keys]
     ordered_keys += [k for k in all_keys if k not in priority]
 
@@ -48,18 +61,23 @@ def _render_raw_preview_table(items: list[dict]) -> str:
         cells = []
         for k in ordered_keys:
             val = item.get(k, "")
-            if k == "image_url" and val:
-                # Render as image
-                cells.append(f'<td><img class="thumb" src="{escape(str(val))}" alt=""></td>')
+            str_val = str(val) if val is not None else ""
+
+            # Check if this is an image field or image URL - render as image
+            if _is_image_field(k) and str_val.startswith("http"):
+                cells.append(f'<td><img class="thumb" src="{escape(str_val)}" alt=""></td>')
             elif k == "url" and val:
-                # Render as clickable link
-                cells.append(f'<td><a href="{escape(str(val))}" target="_blank">View</a></td>')
+                # Main URL field - render as clickable link
+                cells.append(f'<td><a href="{escape(str_val)}" target="_blank">View</a></td>')
+            elif _is_image_url(str_val):
+                # Looks like an image URL - render as image
+                cells.append(f'<td><img class="thumb" src="{escape(str_val)}" alt=""></td>')
             elif isinstance(val, str) and val.startswith("http"):
                 # Any other URL field - make clickable
-                cells.append(f'<td><a href="{escape(val)}" target="_blank">{escape(val[:40])}...</a></td>')
+                display = val[:40] + "..." if len(val) > 40 else val
+                cells.append(f'<td><a href="{escape(val)}" target="_blank">{escape(display)}</a></td>')
             else:
                 # Regular value - escape and truncate if too long
-                str_val = str(val) if val is not None else ""
                 display_val = str_val[:100] + "..." if len(str_val) > 100 else str_val
                 cells.append(f"<td>{escape(display_val)}</td>")
         rows_html.append(f"<tr>{''.join(cells)}</tr>")
@@ -132,11 +150,14 @@ def _page_shell(title: str, body: str, nav_active: str = "") -> str:
 def _run_raw_scrape(
     spider: str,
     url: str | None,
+    use_sitemap: bool,
+    sitemap_urls: list[str] | None,
     max_items: int,
 ) -> dict[str, Any]:
     """Run a spider and store raw scraped output in a JSON file."""
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    output_file = RAW_OUTPUT_DIR / f"{spider}_raw_{timestamp}.json"
+    # Keep file naming consistent with other raw exports: <spider>_YYYYMMDD_HHMMSS.json
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    output_file = RAW_OUTPUT_DIR / f"{spider}_{timestamp}.json"
     cmd = [
         sys.executable,
         "-m",
@@ -147,6 +168,11 @@ def _run_raw_scrape(
     ]
     if url:
         cmd.extend(["--url", url])
+    if sitemap_urls:
+        for sitemap_url in sitemap_urls:
+            cmd.extend(["--sitemap-url", sitemap_url])
+    elif use_sitemap:
+        cmd.append("--sitemap")
 
     run = subprocess.run(
         cmd,
@@ -191,6 +217,8 @@ def _run_raw_scrape(
 def api_raw_scrape(
     spider: str = Form(...),
     url: str | None = Form(default=None),
+    sitemap: bool = Form(default=False),
+    sitemap_url: str | None = Form(default=None),
     preview_limit: int = Form(default=10),
 ):
     """Run a manual scrape and return JSON result."""
@@ -198,10 +226,13 @@ def api_raw_scrape(
         return {"ok": False, "error": "Invalid spider selected. Choose 'products' or 'jobs'."}
 
     normalized_url = (url or "").strip() or None
+    normalized_sitemap_url = (sitemap_url or "").strip() or None
     safe_preview_limit = max(1, min(preview_limit, 100))
     return _run_raw_scrape(
         spider=spider,
         url=normalized_url,
+        use_sitemap=sitemap,
+        sitemap_urls=[normalized_sitemap_url] if normalized_sitemap_url else None,
         max_items=safe_preview_limit,
     )
 
@@ -422,6 +453,14 @@ def dashboard_raw_scrape():
         URL (optional)
         <input type="url" name="url" placeholder="https://example.com" style="display:block;margin-top:.35rem;padding:.45rem;width:100%;" />
     </label>
+    <label style="display:flex;align-items:center;gap:.5rem;">
+        <input type="checkbox" name="sitemap" value="true">
+        Use sitemap discovery
+    </label>
+    <label>
+        Sitemap URL (optional)
+        <input type="url" name="sitemap_url" placeholder="https://example.com/sitemap.xml" style="display:block;margin-top:.35rem;padding:.45rem;width:100%;" />
+    </label>
     <label>
         Preview Items
         <input type="number" name="preview_limit" min="1" max="100" value="10" style="display:block;margin-top:.35rem;padding:.45rem;width:140px;" />
@@ -436,6 +475,8 @@ def dashboard_raw_scrape():
 def dashboard_raw_scrape_run(
         spider: str = Form(...),
         url: str | None = Form(default=None),
+    sitemap: bool = Form(default=False),
+    sitemap_url: str | None = Form(default=None),
         preview_limit: int = Form(default=10),
 ):
         """Run a manual scrape and show saved JSON output details in UI."""
@@ -444,10 +485,13 @@ def dashboard_raw_scrape_run(
                 return _page_shell("Manual Raw Scrape", body, nav_active="raw_scrape")
 
         normalized_url = (url or "").strip() or None
+        normalized_sitemap_url = (sitemap_url or "").strip() or None
         safe_preview_limit = max(1, min(preview_limit, 100))
         result = _run_raw_scrape(
                 spider=spider,
                 url=normalized_url,
+            use_sitemap=sitemap,
+            sitemap_urls=[normalized_sitemap_url] if normalized_sitemap_url else None,
                 max_items=safe_preview_limit,
         )
 
@@ -472,7 +516,7 @@ def dashboard_raw_scrape_run(
 <div class="card" style="margin-bottom:1rem;">
     <h2>Saved File</h2>
     <p>{escape(result['file'])}</p>
-    <p class="meta">Spider: {escape(spider)}{f" | URL: {escape(normalized_url)}" if normalized_url else ""}</p>
+    <p class="meta">Spider: {escape(spider)}{f" | URL: {escape(normalized_url)}" if normalized_url else ""}{" | Sitemap: enabled" if sitemap else ""}{f" | Sitemap URL: {escape(normalized_sitemap_url)}" if normalized_sitemap_url else ""}</p>
 </div>
 
 <div class="card" style="margin-bottom:1rem;">
