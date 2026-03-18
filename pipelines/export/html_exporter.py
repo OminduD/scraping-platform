@@ -16,7 +16,6 @@ OUTPUT_DIR = Path("data/processed")
 SPIDER_OUTPUT_FILES = {
     "products": "products.html",
     "jobs": "jobs.html",
-    "anix": "anix_products.html",
 }
 
 
