@@ -15,7 +15,6 @@ OUTPUT_DIR = Path("data/processed")
 SPIDER_OUTPUT_FILES = {
     "products": "products.tsv",
     "jobs": "jobs.tsv",
-    "anix": "anix_products.tsv",
 }
 
 # Fields to include in the clean TSV (ordered)
@@ -25,7 +24,6 @@ JOB_FIELDS = ["title", "company", "location", "posted_at", "url", "source"]
 SPIDER_FIELDS = {
     "products": PRODUCT_FIELDS,
     "jobs": JOB_FIELDS,
-    "anix": PRODUCT_FIELDS,
 }
 
 
