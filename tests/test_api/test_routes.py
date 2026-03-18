@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from api.routes import dashboard as dashboard_routes
 from data_models import Product, JobListing
@@ -118,3 +119,40 @@ class TestDashboardRawScrape:
         assert resp.status_code == 200
         assert "Saved 1 raw items." in resp.text
         assert "products_raw_20260317T100000Z.json" in resp.text
+
+
+class TestRawPreviewParsing:
+    def test_load_raw_file_rows_recovers_from_partial_json_array(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(dashboard_routes, "RAW_OUTPUT_DIR", Path(tmp_path))
+
+        path = Path(tmp_path) / "products_partial.json"
+        path.write_text(
+            '[\n'
+            '  {"url":"https://example.com/1","title":"One"},\n'
+            '  {"url":"https://example.com/2","title":"Two"},\n'
+            '  {"url":"https://example.com/3","title":"Three"\n',
+            encoding="utf-8",
+        )
+
+        rows = dashboard_routes._load_raw_file_rows("products_partial.json")
+
+        assert len(rows) == 2
+        assert rows[0]["url"] == "https://example.com/1"
+        assert rows[1]["title"] == "Two"
+
+    def test_load_raw_file_rows_ignores_bad_jsonl_lines(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(dashboard_routes, "RAW_OUTPUT_DIR", Path(tmp_path))
+
+        path = Path(tmp_path) / "products_jsonl.json"
+        path.write_text(
+            '{"url":"https://example.com/1","title":"One"}\n'
+            '{"url":"https://example.com/2","title":"Two"}\n'
+            '{"url":"https://example.com/3","title":"Broken"\n',
+            encoding="utf-8",
+        )
+
+        rows = dashboard_routes._load_raw_file_rows("products_jsonl.json")
+
+        assert len(rows) == 2
+        assert rows[0]["title"] == "One"
+        assert rows[1]["url"] == "https://example.com/2"
