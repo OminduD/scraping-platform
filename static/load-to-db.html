@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Load to DB - Scraping Platform</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav>
+    <a class="brand" href="/static/index.html">Scraping Platform</a>
+    <a href="/static/index.html">Home</a>
+    <a href="/static/raw-scrape.html">Raw Scrape</a>
+    <a href="/static/load-to-db.html" class="active">Load to DB</a>
+  </nav>
+
+  <div class="container">
+    <h1>Load Raw Data to PostgreSQL</h1>
+    <p class="meta">Select a raw JSON file to load into the PostgreSQL database.</p>
+
+    <div id="files-list" class="file-list loading">
+      Loading files...
+    </div>
+
+    <a href="/static/index.html" class="btn" style="margin-top: 1.5rem;">Back to Dashboard</a>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', loadFiles);
+
+    async function loadFiles() {
+      try {
+        const res = await fetch('/api/v1/raw-files');
+        const data = await res.json();
+
+        if (!data.files || data.files.length === 0) {
+          document.getElementById('files-list').innerHTML = '<p class="meta">No raw JSON files found in data/raw. Run a raw scrape first.</p>';
+          return;
+        }
+
+        let html = '';
+        for (const file of data.files) {
+          const itemType = file.name.toLowerCase().includes('job') ? 'job' : 'product';
+          html += `
+            <div class="file-item">
+              <div class="file-info">
+                <h3>${escapeHtml(file.name)}</h3>
+                <p class="meta">Type: ${itemType} | Size: ${(file.size / 1024).toFixed(1)} KB</p>
+              </div>
+              <div class="file-actions">
+                <a href="/export/raw/${encodeURIComponent(file.name)}/csv" class="btn">CSV</a>
+                <a href="/export/raw/${encodeURIComponent(file.name)}/tsv" class="btn">TSV</a>
+                <a href="/export/raw/${encodeURIComponent(file.name)}/psv" class="btn">PSV</a>
+                <button class="btn btn-success" onclick="loadToDb('${escapeHtml(file.name)}', '${itemType}')">Load to DB</button>
+              </div>
+            </div>
+          `;
+        }
+
+        document.getElementById('files-list').innerHTML = html;
+      } catch (e) {
+        document.getElementById('files-list').innerHTML = '<p class="error">Failed to load files: ' + e.message + '</p>';
+      }
+    }
+
+    async function loadToDb(filename, itemType) {
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = 'Loading...';
+
+      try {
+        const res = await fetch(`/export/load-to-db?filename=${encodeURIComponent(filename)}&item_type=${itemType}`, {
+          method: 'POST'
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+          alert(data.message);
+        } else {
+          alert('Failed: ' + (data.detail || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Load to DB';
+      }
+    }
+
+    function escapeHtml(text) {
+      if (text === null || text === undefined) return '';
+      const div = document.createElement('div');
+      div.textContent = String(text);
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
