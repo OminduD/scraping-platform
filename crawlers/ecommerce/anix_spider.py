@@ -32,6 +32,13 @@ class AnixSpider(BaseSpider):
         },
     }
 
+    def __init__(self, *args: Any, download_images: bool | str = False, **kwargs: Any) -> None:
+        if isinstance(download_images, str):
+            self.download_images = download_images.lower() in {"1", "true", "yes", "on"}
+        else:
+            self.download_images = bool(download_images)
+        super().__init__(*args, **kwargs)
+
     def parse(self, response: scrapy.http.Response, **kwargs) -> Generator:
         self._record_success(response.url)
         domain = urlparse(response.url).hostname or "anix.lk"
@@ -51,11 +58,13 @@ class AnixSpider(BaseSpider):
                 or response.css(".product img::attr(src)").get("")
             )
             self._record_item("product")
-            yield {
+            item = {
                 "title": title,
                 "price": price,
                 "url": response.url,
                 "image_url": image_url,
-                "image_urls": [image_url] if image_url else [],
                 "source": domain,
             }
+            if self.download_images and image_url:
+                item["image_urls"] = [image_url]
+            yield item
