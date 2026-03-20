@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 import scrapy
 import structlog
 from prometheus_client import Counter, Histogram
+from scrapy_playwright.page import PageMethod
 
 from configs import get_settings
 from crawlers.base.sitemap import filter_urls, parse_sitemap_xml
@@ -56,6 +57,11 @@ class BaseSpider(scrapy.Spider):
     # Set these on a subclass or pass sitemap_urls via kwargs.
     sitemap_urls: list[str] = []
     sitemap_filter_patterns: list[str] = []  # regex patterns to keep only matching URLs
+
+    # ── Playwright support ───────────────────────────────────────────
+    # Set `use_playwright = True` on subclasses to enable JavaScript rendering
+    use_playwright: bool = False
+    playwright_config: dict[str, Any] = {}
 
     def __init__(self, *args: Any, sitemap_urls: list[str] | None = None, **kwargs: Any) -> None:
         if sitemap_urls:
@@ -131,3 +137,69 @@ class BaseSpider(scrapy.Spider):
         url = failure.request.url
         SCRAPE_FAILURE.labels(spider=self.name).inc()
         logger.error("crawl.error", spider=self.name, url=url, error=str(failure.value))
+
+    # ── Playwright helpers ───────────────────────────────────────────
+
+    def make_playwright_request(
+        self,
+        url: str,
+        callback,
+        wait_for_selector: str | None = None,
+        wait_for_timeout: int | None = None,
+        screenshot: str | None = None,
+        api_interception_patterns: list[str] | None = None,
+        **meta_kwargs,
+    ) -> scrapy.Request:
+        """Create a Playwright-enabled request with common options.
+
+        Args:
+            url: URL to request
+            callback: Parse callback function
+            wait_for_selector: CSS selector to wait for before parsing
+            wait_for_timeout: Milliseconds to wait after page load
+            screenshot: Path to save screenshot (for debugging)
+            api_interception_patterns: URL patterns to intercept (e.g., ["**/api/**", "**/graphql**"])
+            **meta_kwargs: Additional meta parameters
+
+        Returns:
+            scrapy.Request with Playwright meta configuration
+
+        Example:
+            yield self.make_playwright_request(
+                "https://example.com/products",
+                self.parse,
+                wait_for_selector="div.product",
+                api_interception_patterns=["**/api/products**"]
+            )
+        """
+        meta = {
+            "playwright": True,
+            "playwright_include_page": True,
+            "playwright_page_methods": [],
+        }
+
+        # Add wait conditions
+        if wait_for_selector:
+            meta["playwright_page_methods"].append(
+                PageMethod("wait_for_selector", wait_for_selector)
+            )
+
+        if wait_for_timeout:
+            meta["playwright_page_methods"].append(
+                PageMethod("wait_for_timeout", wait_for_timeout)
+            )
+
+        # Add screenshot support
+        if screenshot:
+            meta["playwright_page_methods"].append(
+                PageMethod("screenshot", path=screenshot, full_page=True)
+            )
+
+        # Store API interception patterns for middleware
+        if api_interception_patterns:
+            meta["api_interception_patterns"] = api_interception_patterns
+
+        # Merge any additional meta parameters
+        meta.update(meta_kwargs)
+
+        return scrapy.Request(url, callback=callback, meta=meta, errback=self._on_error)
