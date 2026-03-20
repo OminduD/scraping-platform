@@ -35,9 +35,15 @@ class JsonExportPipeline:
     def open_spider(self, spider) -> None:
         spider_name = spider.name
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        
+        domain_part = ""
+        if hasattr(spider, "allowed_domains") and spider.allowed_domains:
+            # take the first domain, strip www. and replace special chars
+            domain = spider.allowed_domains[0].replace("www.", "").replace(".", "_")
+            domain_part = f"_{domain}"
 
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        filename = f"{spider_name}_{timestamp}.json"
+        filename = f"{spider_name}{domain_part}_{timestamp}.json"
         self.path = OUTPUT_DIR / filename
 
         # Create the file immediately so interrupted crawls still leave an artifact.
