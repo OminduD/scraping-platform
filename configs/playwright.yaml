@@ -1,0 +1,136 @@
+# Playwright Configuration for Site-Specific Settings
+#
+# This file defines default Playwright settings and per-domain overrides.
+# Spiders can reference these settings to customize browser behavior.
+#
+# Usage in spider:
+#   Load settings from configs and apply to requests
+#   Or override directly in spider's playwright_config attribute
+
+# ── Default Settings ─────────────────────────────────────────────────
+default:
+  enabled: false            # Spiders must opt-in to Playwright
+  headless: true            # Run browser in headless mode
+  stealth_mode: true        # Enable anti-detection scripts
+  timeout: 30000            # Navigation timeout (ms)
+  wait_for_selector: null   # CSS selector to wait for (null = don't wait)
+  wait_for_timeout: 0       # Additional wait time after page load (ms)
+  screenshot_on_error: false # Save screenshot when requests fail
+
+# ── Domain-Specific Settings ─────────────────────────────────────────
+# Configuration examples for your priority sites
+# Copy/modify these when creating spiders
+
+domains:
+  # ── Yelp (JS-heavy + GraphQL API) ──────────────────────────────────
+  yelp.com:
+    enabled: true
+    stealth_mode: true
+    wait_for_selector: "div[data-testid='serp-ia-card']"
+    wait_for_timeout: 2000
+    api_interception:
+      enabled: true
+      patterns:
+        - "**/gql**"           # GraphQL API
+        - "**/api/v3/**"       # REST API v3
+
+  # ── CoinMarketCap (API-first approach) ─────────────────────────────
+  coinmarketcap.com:
+    enabled: true
+    stealth_mode: true
+    wait_for_selector: "table.cmc-table"
+    wait_for_timeout: 3000
+    api_interception:
+      enabled: true
+      patterns:
+        - "**/v1/cryptocurrency/**"
+        - "**/v2/cryptocurrency/**"
+        - "**/data-api/**"
+        - "**/listings**"
+
+  # ── AliExpress (CloudFlare protection, most challenging) ───────────
+  aliexpress.com:
+    enabled: true
+    stealth_mode: true
+    wait_for_timeout: 8000   # Extra time for CloudFlare challenge
+    wait_for_selector: "div.product-card, div.list-item"
+    cloudflare_bypass: true
+    api_interception:
+      enabled: true
+      patterns:
+        - "**/mtop.aliexpress.**"
+        - "**/gp/productSearch**"
+        - "**/ae.search.**"
+
+  # ── eBay (Moderate JS, bot detection) ──────────────────────────────
+  ebay.com:
+    enabled: true
+    stealth_mode: true
+    wait_for_selector: "div.s-item, ul.srp-results"
+    wait_for_timeout: 2000
+    api_interception:
+      enabled: false  # eBay HTML parsing works well, API not needed
+
+  # ── Keells Super (Sri Lankan e-commerce SPA) ───────────────────────
+  keellssuper.com:
+    enabled: true
+    stealth_mode: true
+    wait_for_timeout: 3000
+    wait_for_selector: "div.product-card, div.product-item"
+    api_interception:
+      enabled: true
+      patterns:
+        - "**/api/**"
+        - "**/products**"
+
+# ── Additional Common Sites ──────────────────────────────────────────
+# Add configurations for other sites as needed
+
+  amazon.com:
+    enabled: true
+    stealth_mode: true
+    wait_for_selector: "div[data-component-type='s-search-result']"
+    wait_for_timeout: 2000
+    cloudflare_bypass: false
+
+  walmart.com:
+    enabled: true
+    stealth_mode: true
+    wait_for_selector: "div[data-item-id]"
+    api_interception:
+      enabled: true
+      patterns:
+        - "**/api/search**"
+        - "**/electrode/api/**"
+
+  target.com:
+    enabled: true
+    wait_for_selector: "div[data-test='product-card']"
+    api_interception:
+      enabled: true
+      patterns:
+        - "**/redsky_aggregations/**"
+
+# ── Notes ────────────────────────────────────────────────────────────
+#
+# Configuration Priority (highest to lowest):
+# 1. Request meta parameters (runtime)
+# 2. Spider's playwright_config attribute
+# 3. Domain-specific settings (this file)
+# 4. Default settings (this file)
+#
+# wait_for_selector vs wait_for_timeout:
+# - wait_for_selector: Waits for specific element (more reliable)
+# - wait_for_timeout: Fixed delay (use when content loads unpredictably)
+# - Can use both together
+#
+# API Interception Patterns:
+# - Use glob-style patterns: **/api/**, **graphql**, **/*.json
+# - More specific patterns = faster (less filtering overhead)
+# - Test patterns by checking browser DevTools Network tab
+#
+# CloudFlare Bypass:
+# - Requires wait_for_timeout: 5-10 seconds
+# - Stealth mode must be enabled
+# - May still fail without residential proxies
+# - Monitor logs for "challenge" or "captcha" keywords
