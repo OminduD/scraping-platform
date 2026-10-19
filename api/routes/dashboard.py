@@ -158,58 +158,38 @@ def _load_raw_file_rows(filename: str) -> list[dict[str, Any]]:
 def _page_shell(title: str, body: str, nav_active: str = "") -> str:
     """Wrap body content in a full HTML page with navigation."""
 
-    def _nav_cls(name: str) -> str:
-        return "active" if name == nav_active else ""
-
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{escape(title)} — Scraping Platform</title>
+<link rel="stylesheet" href="/static/css/style.css?v=2">
+<script src="https://unpkg.com/lucide@latest"></script>
 <style>
-  *{{ box-sizing:border-box; margin:0; padding:0; }}
-  body{{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:#f8f9fa; color:#212529; }}
-  nav{{ background:#343a40; padding:.8rem 2rem; display:flex; gap:1.5rem; align-items:center; }}
-  nav a{{ color:#adb5bd; text-decoration:none; font-weight:500; }}
-  nav a:hover,nav a.active{{ color:#fff; }}
-  nav .brand{{ color:#fff; font-size:1.1rem; font-weight:700; margin-right:2rem; }}
-  .container{{ max-width:1400px; margin:2rem auto; padding:0 2rem; }}
-  h1{{ margin-bottom:1rem; }}
-  .meta{{ color:#6c757d; margin-bottom:1rem; }}
-  table{{ border-collapse:collapse; width:100%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.1); margin-top:1rem; }}
-  th,td{{ padding:.6rem .8rem; text-align:left; border-bottom:1px solid #dee2e6; font-size:.9rem; }}
-  th{{ background:#343a40; color:#fff; position:sticky; top:0; }}
-  tr:hover{{ background:#f1f3f5; }}
-  td{{ max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
-  .card-grid{{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:1.5rem; }}
-  .card{{ background:#fff; border-radius:8px; padding:1.5rem; box-shadow:0 1px 3px rgba(0,0,0,.1); }}
-  .card h2{{ font-size:1.1rem; margin-bottom:.5rem; }}
-  .card .stat{{ font-size:2rem; font-weight:700; color:#0d6efd; }}
-  img.thumb{{ max-width:60px; max-height:60px; object-fit:cover; border-radius:4px; }}
-  a.btn{{ display:inline-block; padding:.4rem 1rem; background:#0d6efd; color:#fff; text-decoration:none; border-radius:4px; font-size:.85rem; margin-right:.4rem; margin-top:.4rem; }}
-  a.btn:hover{{ background:#0b5ed7; }}
-  button.btn{{ display:inline-block; padding:.4rem 1rem; background:#0d6efd; color:#fff; border:none; border-radius:4px; font-size:.85rem; margin-right:.4rem; margin-top:.4rem; cursor:pointer; }}
-  button.btn:hover{{ background:#0b5ed7; }}
-  .btn-success{{ background:#198754; }}
-  .btn-success:hover{{ background:#157347; }}
-  .pagination{{ margin-top:1rem; }}
-  .export-btns{{ margin-top:1rem; margin-bottom:1rem; }}
+  /* Minimal overrides for server-rendered routes */
+  nav {{ margin-bottom: 2rem; }}
+  nav a {{ flex: none; width: auto; background: transparent; padding: 0.5rem 1rem; border: none; margin: 0; }}
+  nav a.active {{ background: rgba(99, 102, 241, 0.1); border-radius: 8px; border: 1px solid rgba(99, 102, 241, 0.2); }}
+  nav a.brand {{ padding-left: 0; }}
 </style>
 </head>
 <body>
 <nav>
-  <span class="brand">Scraping Platform</span>
-  <a href="/dashboard/" class="{_nav_cls("home")}">Home</a>
-  <a href="/dashboard/products" class="{_nav_cls("products")}">Products</a>
-  <a href="/dashboard/jobs" class="{_nav_cls("jobs")}">Jobs</a>
-  <a href="/dashboard/raw-scrape" class="{_nav_cls("raw_scrape")}">Raw Scrape</a>
+  <a class="brand" href="/dashboard/"><i data-lucide="rocket"></i> Scraper Pro</a>
+  <a href="/dashboard/" class="{_nav_cls("home")}"><i data-lucide="home"></i> Home</a>
+  <a href="/dashboard/products" class="{_nav_cls("products")}"><i data-lucide="shopping-bag"></i> Products</a>
+  <a href="/dashboard/jobs" class="{_nav_cls("jobs")}"><i data-lucide="briefcase"></i> Jobs</a>
+  <a href="/dashboard/raw-scrape" class="{_nav_cls("raw_scrape")}"><i data-lucide="bot"></i> Raw Scrape</a>
+  <a href="/dashboard/load-to-db" class="{_nav_cls("load_to_db")}"><i data-lucide="server"></i> Load to DB</a>
 </nav>
 <div class="container">
 {body}
 </div>
+<script>lucide.createIcons();</script>
 </body>
 </html>"""
+
 
 
 def _run_raw_scrape(
